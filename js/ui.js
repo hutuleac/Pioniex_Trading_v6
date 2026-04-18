@@ -20,6 +20,70 @@ export function scClass(s) { return s>=8?'s-high':s>=6?'s-mid':'s-low'; }
 export function scColor(s) { return s>=8?'var(--green)':s>=6?'var(--yellow)':'var(--red)'; }
 
 // ══════════════════════════════════════════════════════════════════
+//  REGIME & MOMENTUM block — shared by both sheets
+// ══════════════════════════════════════════════════════════════════
+const REGIME_COLORS = {
+  RANGING:        'var(--cyan)',
+  TRENDING_UP:    'var(--green)',
+  TRENDING_DOWN:  'var(--red)',
+  SQUEEZE:        'var(--yellow)',
+  EXPANSION:      'var(--purple)',
+  MIXED:          'var(--text2)',
+};
+function dcRowText(dc, pos, price) {
+  if (!dc) return '—';
+  const f = (v) => v < 1 ? v.toFixed(4) : v.toFixed(2);
+  if (pos === 'BREAK_UP')   return `BREAK ↑ hi ${f(dc.high)} (${dc.widthPct.toFixed(1)}%)`;
+  if (pos === 'BREAK_DOWN') return `BREAK ↓ lo ${f(dc.low)} (${dc.widthPct.toFixed(1)}%)`;
+  return `INSIDE [${f(dc.low)} / ${f(dc.high)}] w=${dc.widthPct.toFixed(1)}%`;
+}
+function dcColor(pos) {
+  if (pos === 'BREAK_UP')   return 'var(--green)';
+  if (pos === 'BREAK_DOWN') return 'var(--red)';
+  return 'var(--cyan)';
+}
+export function buildRegimeBlock(m, { includeSqueezeConf = false } = {}) {
+  const regime = m.regime ?? 'MIXED';
+  const regColor = REGIME_COLORS[regime] ?? 'var(--text2)';
+  const regLabel = regime.replace('_', ' ');
+
+  const adx  = m.adx?.adx ?? 0;
+  const pDI  = m.adx?.plusDI ?? 0;
+  const mDI  = m.adx?.minusDI ?? 0;
+  const adxColor = adx > 25 ? 'var(--red)' : adx >= 18 ? 'var(--yellow)' : 'var(--green)';
+
+  const mh   = m.macd?.histogram ?? 0;
+  const mTr  = m.macd?.trend ?? 'neutral';
+  const mColor = mTr === 'bull' ? 'var(--green)' : mTr === 'bear' ? 'var(--red)' : 'var(--text2)';
+
+  const bw   = m.bbBw ?? 0;
+  const bbLbl = m.bb?.label ?? 'normal';
+  const bwColor = bbLbl === 'squeeze' ? 'var(--yellow)' : bbLbl === 'expanded' ? 'var(--red)' : 'var(--green)';
+
+  const flow = m.flow ?? 0;
+  const flowColor = flow > CFG.FLOW_STRONG ? 'var(--green)'
+                  : flow < -CFG.FLOW_STRONG ? 'var(--red)'
+                  : Math.abs(flow) > CFG.FLOW_PARTIAL ? 'var(--yellow)' : 'var(--text2)';
+
+  const squeezeRow = includeSqueezeConf
+    ? `<tr><td>Squeeze Conf</td><td style="color:${(m.squeezeConf ?? 0) >= 60 ? 'var(--yellow)' : (m.squeezeConf ?? 0) >= 40 ? 'var(--cyan)' : 'var(--text2)'}">${m.squeezeConf ?? 0}/100</td></tr>`
+    : '';
+
+  return `
+<div class="sheet-section-label">Regime & Momentum</div>
+<table class="sheet-table">
+  <tr><td>Regime</td><td style="color:${regColor};font-weight:700">${regLabel}</td></tr>
+  <tr><td>Donchian 20</td><td style="color:${dcColor(m.dc20Pos)}">${dcRowText(m.dc20, m.dc20Pos, m.price)}</td></tr>
+  <tr><td>Donchian 55</td><td style="color:${dcColor(m.dc55Pos)}">${dcRowText(m.dc55, m.dc55Pos, m.price)}</td></tr>
+  <tr><td>ADX</td><td style="color:${adxColor}">${adx.toFixed(1)} (+DI ${pDI.toFixed(1)} / −DI ${mDI.toFixed(1)})</td></tr>
+  <tr><td>MACD Hist</td><td style="color:${mColor}">${mh >= 0 ? '+' : ''}${mh.toFixed(4)} · ${mTr}</td></tr>
+  <tr><td>BB Width</td><td style="color:${bwColor}">${bw.toFixed(1)}% · ${bbLbl}</td></tr>
+  <tr><td>Flow 24h</td><td style="color:${flowColor}">${flow >= 0 ? '+' : ''}${flow.toFixed(2)}%</td></tr>
+  ${squeezeRow}
+</table>`;
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  MARKET PULSE STRIP
 // ══════════════════════════════════════════════════════════════════
 export function buildMarketPulseStrip(pulse) {
@@ -214,7 +278,7 @@ export function buildGridSheet(name, m, prov = '?') {
   const scoreBreakdownHtml = gs.components.map(c => {
     const pct = c.max > 0 ? c.score / c.max : 0;
     const color = pct >= 0.9 ? 'var(--green)' : pct >= 0.5 ? 'var(--yellow)' : 'var(--red)';
-    return `<tr><td>${c.label}</td><td style="color:${color}">${c.score.toFixed(1)} / ${c.max.toFixed(1)}<br><span style="color:#555;font-size:.6rem">${c.detail}</span></td></tr>`;
+    return `<tr><td>${c.label}</td><td style="color:${color}">${c.score.toFixed(1)} / ${c.max.toFixed(1)}<br><span style="color:var(--text2);font-size:.6rem">${c.detail}</span></td></tr>`;
   }).join('');
 
   // Recommendations
@@ -224,7 +288,7 @@ export function buildGridSheet(name, m, prov = '?') {
 
   // Warnings (critical only)
   const warns = [];
-  if (adx > 25)    warns.push(`ADX ${adx.toFixed(1)} — strong trend, grid risky`);
+  if (adx > GRID_CONFIG.VIABILITY.ADX_BLOCK) warns.push(`ADX ${adx.toFixed(1)} > ${GRID_CONFIG.VIABILITY.ADX_BLOCK} — trending market, grid risky`);
   if (m.bb?.label === 'expanded') warns.push(`BB Width ${(m.bbBw??0).toFixed(1)}% — expanded, avoid grid until compression`);
   if (m.rsi > 70)  warns.push(`RSI ${m.rsi.toFixed(1)} — overbought, wait for pullback`);
   if (m.rsi < 30)  warns.push(`RSI ${m.rsi.toFixed(1)} — oversold`);
@@ -250,7 +314,7 @@ export function buildGridSheet(name, m, prov = '?') {
   const poc5d  = m.poc5d  ?? 0;
   const poc14d = m.poc14d ?? 0;
   const price  = m.price  ?? 0;
-  let pocHtml = '<tr><td colspan="2" style="color:#555">Range not computed</td></tr>';
+  let pocHtml = '<tr><td colspan="2" style="color:var(--text2)">Range not computed</td></tr>';
   if (range?.rangeLow != null && range?.rangeHigh != null && poc5d > 0) {
     const mid    = (range.rangeLow + range.rangeHigh) / 2;
     const inRange = (p) => p >= range.rangeLow && p <= range.rangeHigh;
@@ -312,7 +376,7 @@ ${recsHtml}
 
 <div class="sheet-section-label">Conditions</div>
 <table class="sheet-table">
-  <tr><td>ADX 4H</td><td style="color:${adx < 20 ? 'var(--green)' : adx < 25 ? 'var(--yellow)' : 'var(--red)'}">${adx.toFixed(1)} ${adx < 20 ? '✓ Low trend' : adx < 25 ? '⚠ Mild trend' : '✗ Strong trend'}</td></tr>
+  <tr><td>ADX 4H</td><td style="color:${adx < GRID_CONFIG.VIABILITY.ADX_IDEAL ? 'var(--green)' : adx < GRID_CONFIG.VIABILITY.ADX_BLOCK ? 'var(--yellow)' : 'var(--red)'}">${adx.toFixed(1)} ${adx < GRID_CONFIG.VIABILITY.ADX_IDEAL ? '✓ Ranging' : adx < GRID_CONFIG.VIABILITY.ADX_BLOCK ? '⚠ Mild trend' : '✗ Trending'}</td></tr>
   <tr><td>BB Width</td><td style="color:${bbColor}">${bbBw.toFixed(1)}% — ${bbNote}</td></tr>
   <tr><td>ATR 4H</td><td style="color:${atrColor}">${atr < 1 ? atr.toFixed(4) : atr.toFixed(2)} (${atrPct.toFixed(2)}%)</td></tr>
   <tr><td>CVD 5d</td><td style="color:${cvdColor}">${cvdLabel}</td></tr>
@@ -325,7 +389,9 @@ ${recsHtml}
 </table>
 
 <div class="sheet-section-label">Warnings</div>
-${warnsHtml}`;
+${warnsHtml}
+
+${buildRegimeBlock(m, { includeSqueezeConf: true })}`;
 }
 
 // ── Direction card (collapsed) ────────────────────────────
@@ -437,7 +503,7 @@ export function buildDirectionSheet(name, m, score = 0, direction = null, detail
 
   // CVD labels
   const cvdLabel = (v) => v == null ? '—' : v > 0 ? 'ACC' : v < 0 ? 'DIS' : 'NEUTRAL';
-  const cvdColor = (v) => v == null ? '#555' : v > 0 ? 'var(--green)' : 'var(--red)';
+  const cvdColor = (v) => v == null ? 'var(--text2)' : v > 0 ? 'var(--green)' : 'var(--red)';
 
   // Entry/SL/TP block (only when rec = Enter)
   const entryHtml = hasEntry ? `
@@ -474,6 +540,8 @@ export function buildDirectionSheet(name, m, score = 0, direction = null, detail
   <tr><td>CVD 5d / 14d / 30d</td>
       <td><span style="color:${cvdColor(m.cvd5d)}">${cvdLabel(m.cvd5d)}</span> / <span style="color:${cvdColor(m.cvd14d)}">${cvdLabel(m.cvd14d)}</span> / <span style="color:${cvdColor(m.cvd30d)}">${cvdLabel(m.cvd30d)}</span></td></tr>
 </table>
+
+${buildRegimeBlock(m, { includeSqueezeConf: false })}
 
 ${entryHtml}`;
 }

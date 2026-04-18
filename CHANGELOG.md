@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## v6.2 — 2026-04-18
+
+### Added
+- Donchian Channels (20 + 55 period) — canonical range detector for regime + breakout context
+- `calcDonchian()`, `donchianPos()`, `calcRegime()`, `calcSqueezeConf()` in `js/indicators.js`
+- Regime label composite: RANGING / TRENDING ↑ / TRENDING ↓ / SQUEEZE / EXPANSION / MIXED
+- Squeeze Confidence 0–100 score (BB width + DC/ATR ratio + ATR percentile)
+- "Regime & Momentum" section on both Direction and Grid sheets: Regime badge, DC20, DC55, ADX+DI, MACD hist, BB width, Flow 24h
+- Grid sheet adds Squeeze Confidence row
+- DC20 Squeeze component in `calcGridScore` (max 1.5): full score when BB < 5% AND DC20/ATR < 1.0
+- DC20 breakout check in `assessGridViability` — blocks grids when price breaking the 20-period channel
+- Donchian-based `-0.25` "range indecision" penalty in `calcScore` when direction signal appears inside DC20
+
+### Changed
+- Grid score weights rebalanced to sum 10: ADX 3.0 + BB 1.0 + DC Squeeze 1.5 + CVD 1.5 + POC 2.0 + RSI 1.0 + Fund 0.5 (BB reduced from 2.0 to avoid double-counting with new DC Squeeze component)
+- ADX thresholds unified via `GRID_CONFIG.VIABILITY.ADX_IDEAL (18)` + `ADX_BLOCK (22)` — replaces three inconsistent thresholds (<15 / ≥22 / >25) scattered across score, viability, and UI warnings
+- CVD laterality converted from binary cliff (0.2) to linear ramp between 0.15 → 0.30 — no more score jumps on tiny ratio changes
+- `FVG_ENTRY_PCT` relaxed 1.5 → 2.0 and `POC_CONFLUENCE_PCT` relaxed 0.5 → 1.0 (audit flagged: too tight to trigger in live markets)
+- Stale `#555` color literals in sheet tables replaced with `var(--text2)` for consistency
+
+### Added (config)
+- `CFG.DONCHIAN_PERIOD_SHORT/LONG`, `CFG.DONCHIAN_BREAK_BUFFER_PCT`
+- `GRID_CONFIG.VIABILITY.ADX_IDEAL`, `GRID_CONFIG.SQUEEZE`, `GRID_CONFIG.CVD_LATERAL`
+- New LEGENDS entries: Donchian 20/55, Regime, Squeeze Conf
+
+### Version
+- `CFG.APP_VERSION` bumped `6.1 → 6.2`
+
 ## v6.0 — 2026-04-13
 
 - Mobile-first redesign: table layout replaced with two card sections

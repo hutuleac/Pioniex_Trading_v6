@@ -4,7 +4,7 @@
 //  CONFIG  (mirrors Trading.py CFG class)
 // ══════════════════════════════════════════════════════════════════
 export const CFG = {
-  APP_VERSION          : '6.1',
+  APP_VERSION          : '6.2',
   REFRESH_INTERVAL_SEC : 1200,
   OI_PERIOD            : "4h",  OI_LIMIT              : 42,
   KLINES_MAIN          : 210,   // 4H×210 — enough for EMA200 + 100 FVG candles
@@ -15,10 +15,12 @@ export const CFG = {
   EMA_FAST             : 50,    EMA_SLOW   : 200,
   STRUCT_LOOKBACK_4H   : 20,    STRUCT_LOOKBACK_30D : 40,
   FVG_MAX_GAPS         : 5,
+  DONCHIAN_PERIOD_SHORT: 20,    DONCHIAN_PERIOD_LONG: 55,
+  DONCHIAN_BREAK_BUFFER_PCT: 0.25,   // % of mid, anti-flap buffer at band edges
   RSI_OB: 70, RSI_OS: 30, RSI_EXTREME_OB: 75, RSI_EXTREME_OS: 25,
   FLOW_STRONG: 5.0, FLOW_PARTIAL: 2.0,
   OI_SQUEEZE_HIGH: 10.0, OI_SQUEEZE_MED: 5.0,
-  POC_NEAR_PCT: 0.5, FVG_NEAR_PCT: 1.0, FVG_ENTRY_PCT: 1.5, POC_CONFLUENCE_PCT: 0.5,
+  POC_NEAR_PCT: 0.5, FVG_NEAR_PCT: 1.0, FVG_ENTRY_PCT: 2.0, POC_CONFLUENCE_PCT: 1.0,
   VOL_SPIKE_MULT: 2.0, VOL_AVG_WINDOW: 20,
   SCORE_BOT_MIN: 7.5, CVD_LATERAL_RATIO: 0.2,
   SL_ATR_MULT: 1.5, TP1_ATR_MULT: 3.0, TP2_ATR_MULT: 5.25,
@@ -57,6 +59,9 @@ export const LEGENDS = [
   ["Structure 4H/30d","Bullish=HH+HL. Bearish=LH+LL. Conflict between 4H and 30d=elevated risk."],
   ["OI/OI% 7d","Open Interest. OI↑+price↑=real bull. OI↑+price↓=short buildup/squeeze risk. OI↓+price↓=real bear."],
   ["FVG (Fair Value Gap)","Institutional imbalance on 4H. ★=confirmed by structure. BULL FVG=support, BEAR=resistance."],
+  ["Donchian 20/55",`Highest high vs lowest low over N candles. DC20=regime (INSIDE→range, BREAK↑/↓→trend). DC55=macro breakout context.`],
+  ["Regime",`Composite label from ADX + BB + DC20. RANGING=grid-friendly. TRENDING ↑/↓=directional. SQUEEZE=compression before move. EXPANSION=breakout in progress.`],
+  ["Squeeze Conf",`0–100 composite: BB width + DC20 width/ATR + ATR percentile. High score = tight range, elevated breakout probability.`],
   [`Score 0–10`,`Score ≥ ${CFG.SCORE_BOT_MIN} activates bot params. Components: Trend Macro(2), Swing(1.5), Pressure(2), CVD(1), Setup(2), EMA(0.5), FVG(0.5), POC Conf(0.5). API: Binance primary, Bybit fallback.`],
 ];
 
@@ -77,6 +82,7 @@ export const GRID_CONFIG = {
 
   // Viability block/warn thresholds — tightened for conservative grid selection
   VIABILITY: {
+    ADX_IDEAL        : 18,   // full score below this in calcGridScore (ranging)
     ADX_BLOCK        : 22,   // block if ADX above this (trending market)
     RSI_BLOCK        : 68,   // block if RSI above this (overbought)
     BB_MIN           : 2.0,  // block if BB bandwidth below this (compressed)
@@ -84,6 +90,18 @@ export const GRID_CONFIG = {
     ATR_WARN         : 4.5,  // warn if ATR% above this (high volatility)
     RSI_WARN_HIGH    : 58,   // warn if RSI above this (elevated pressure)
     RSI_WARN_LOW     : 32,   // warn if RSI below this (oversold risk)
+  },
+
+  // Donchian-based squeeze detector thresholds
+  SQUEEZE: {
+    BB_WIDTH_MAX     : 5.0,  // BB bandwidth below this counts as compressed
+    DC_ATR_RATIO_MAX : 1.0,  // DC20 width / ATR below this = tight range
+  },
+
+  // CVD laterality gradient (replaces binary CFG.CVD_LATERAL_RATIO cliff)
+  CVD_LATERAL: {
+    FULL_SCORE_BELOW : 0.15,  // ratio ≤ 0.15 → full CVD weight
+    ZERO_SCORE_ABOVE : 0.30,  // ratio ≥ 0.30 → no CVD weight (linear ramp between)
   },
 
   // Direction selection thresholds — require stronger conviction

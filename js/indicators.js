@@ -152,6 +152,58 @@ export function calcFvg(df, maxGaps = 5) {
   return gaps.slice(0, maxGaps);
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  DONCHIAN CHANNEL — regime & squeeze foundation
+// ══════════════════════════════════════════════════════════════════
+export function calcDonchian(df, period = 20) {
+  if (!df || df.length < period) return null;
+  const slice = df.slice(-period);
+  let hi = -Infinity, lo = Infinity;
+  for (const k of slice) { if (k.High > hi) hi = k.High; if (k.Low < lo) lo = k.Low; }
+  const mid = (hi + lo) / 2;
+  const width = hi - lo;
+  const widthPct = mid > 0 ? width / mid * 100 : 0;
+  return { high: hi, low: lo, mid, width, widthPct };
+}
+
+export function donchianPos(price, dc, bufferPct = 0.25) {
+  if (!dc) return 'UNKNOWN';
+  const buf = dc.mid * (bufferPct / 100);
+  if (price > dc.high - buf) return 'BREAK_UP';
+  if (price < dc.low  + buf) return 'BREAK_DOWN';
+  return 'INSIDE';
+}
+
+// Composite regime label — plain-English market state
+export function calcRegime(m) {
+  const adx = m.adx?.adx ?? 0;
+  const bw  = m.bbBw ?? 0;
+  const dcW = m.dc20?.width ?? 0;
+  const atr = m.atr ?? 0;
+  const dcAtr = atr > 0 ? dcW / atr : 99;
+  const squeezed = bw < CFG.SQUEEZE.BB_WIDTH_MAX && dcAtr < CFG.SQUEEZE.DC_ATR_RATIO_MAX;
+  if (squeezed) return 'SQUEEZE';
+  if (adx >= 22 && m.dc20Pos === 'BREAK_UP'   && m.currClose > m.emaFast) return 'TRENDING_UP';
+  if (adx >= 22 && m.dc20Pos === 'BREAK_DOWN' && m.currClose < m.emaFast) return 'TRENDING_DOWN';
+  if (['BREAK_UP','BREAK_DOWN'].includes(m.dc20Pos) && bw > CFG.SQUEEZE.BB_WIDTH_MAX * 2) return 'EXPANSION';
+  if (adx < 18 && m.dc20Pos === 'INSIDE') return 'RANGING';
+  return 'MIXED';
+}
+
+// Squeeze confidence 0–100 — higher = tighter range + coiling volatility
+export function calcSqueezeConf(m) {
+  const bw  = m.bbBw ?? 0;
+  const dcW = m.dc20?.width ?? 0;
+  const atr = m.atr ?? 0;
+  const atrPct = m.atrPct ?? 0;
+  // Invert each: lower value = higher squeeze score
+  const bwScore  = Math.max(0, Math.min(1, (CFG.SQUEEZE.BB_WIDTH_MAX * 2 - bw) / (CFG.SQUEEZE.BB_WIDTH_MAX * 2)));
+  const dcAtr    = atr > 0 ? dcW / atr : 3;
+  const dcScore  = Math.max(0, Math.min(1, (CFG.SQUEEZE.DC_ATR_RATIO_MAX * 2 - dcAtr) / (CFG.SQUEEZE.DC_ATR_RATIO_MAX * 2)));
+  const atrScore = Math.max(0, Math.min(1, (5 - atrPct) / 5));
+  return Math.round((bwScore * 0.4 + dcScore * 0.4 + atrScore * 0.2) * 100);
+}
+
 export function fvgStatus(price, g) {
   if (g.bottom <= price && price <= g.top) {
     const fillPct = (g.top-g.bottom) > 0 ? (price-g.bottom)/(g.top-g.bottom)*100 : 0;
@@ -228,7 +280,13 @@ export async function getAdvancedMetrics(name, symbol) {
   const change24h = calcChange24h(dfFl);
   const atrPct    = calcAtrPct(atr, last.Close);
 
-  return {
+  // ── Donchian Channels (regime + squeeze foundation) ──────────────
+  const dc20 = calcDonchian(df4h, CFG.DONCHIAN_PERIOD_SHORT);
+  const dc55 = calcDonchian(df4h, CFG.DONCHIAN_PERIOD_LONG);
+  const dc20Pos = donchianPos(last.Close, dc20, CFG.DONCHIAN_BREAK_BUFFER_PCT);
+  const dc55Pos = donchianPos(last.Close, dc55, CFG.DONCHIAN_BREAK_BUFFER_PCT);
+
+  const m = {
     rsi, atr, poc5d, avwap5d, poc14d, avwap14d, poc30d, avwap30d,
     sweep, flow, structure4h, structure30d,
     oiNow:oi.oiNow, oiChange:oi.oiChange,
@@ -237,7 +295,11 @@ export async function getAdvancedMetrics(name, symbol) {
     emaFast, emaSlow, volSpike, volCurr, volAvg,
     adx: adxData, macd: macdData, bb: bbData, bbBw: bbData.bw,
     obv: obvData, fib: fibData, change24h, atrPct,
+    dc20, dc55, dc20Pos, dc55Pos,
   };
+  m.regime      = calcRegime(m);
+  m.squeezeConf = calcSqueezeConf(m);
+  return m;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -372,7 +434,7 @@ export function interpretSignals(price, rsi, atr, flow, oiChange,
 export function calcScore(price, atr, rsi, flow, oiChange,
   poc5d, avwap5d, poc14d, avwap14d, avwap30d,
   cvd5d, cvd14d, cvd30d, structure4h, structure30d,
-  sweep, fvgList, emaFast, emaSlow)
+  sweep, fvgList, emaFast, emaSlow, dc20Pos)
 {
   const { bearMac: bMac, bullMac: uMac, nPoc5d: nP5, nPoc14d: nP14,
           sBull, sBear, dBull, dBear, buyP, selP, shOp, sqR,
@@ -479,6 +541,9 @@ export function calcScore(price, atr, rsi, flow, oiChange,
   else if (direction==="LONG"  && oiChange<-CFG.OI_SQUEEZE_HIGH) { score-=1.0; detail.push([`OI<-${CFG.OI_SQUEEZE_HIGH}% on LONG`,-1.0,"Massive long liquidations"]); }
   if (structure4h!==structure30d && structure4h!=="Neutral" && structure30d!=="Neutral")
     { score-=0.5; detail.push(["Struct conflict",-0.5,`4H=${structure4h} vs 30d=${structure30d}`]); }
+  // DC20 range indecision — soft penalty when directional setup trapped inside Donchian range
+  if (direction && dc20Pos === 'INSIDE')
+    { score-=0.25; detail.push(["DC20 range indecision",-0.25,"Direction inside Donchian20 range — grid regime"]); }
 
   return { score: Math.max(0, Math.min(10, Math.round(score*100)/100)), direction, detail };
 }

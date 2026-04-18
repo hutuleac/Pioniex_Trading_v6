@@ -148,11 +148,13 @@ export function calcGridTakeProfit(rangeHigh, profile = 'moderate') {
  * All thresholds driven by GRID_CONFIG.VIABILITY for central control.
  * @returns {{ viable: boolean, reason: string, warning: string|null }}
  */
-export function assessGridViability(atrPct, adx, rsi, bbBw, structure) {
+export function assessGridViability(atrPct, adx, rsi, bbBw, structure, dc20Pos = 'INSIDE') {
   const V = GRID_CONFIG.VIABILITY;
 
   if (adx > V.ADX_BLOCK)
     return { viable: false, reason: `ADX=${adx.toFixed(1)}: trend detected (>${V.ADX_BLOCK}) — grid bots underperform in trending markets`, warning: null };
+  if (dc20Pos === 'BREAK_UP' || dc20Pos === 'BREAK_DOWN')
+    return { viable: false, reason: `Donchian20 ${dc20Pos.replace('_',' ')} — price breaking range; grid likely to get stuck on one side`, warning: null };
   if (rsi > V.RSI_BLOCK)
     return { viable: false, reason: `RSI=${rsi.toFixed(1)}: overbought (>${V.RSI_BLOCK}) — wait for pullback before starting`, warning: null };
   if (bbBw < V.BB_MIN)
@@ -208,6 +210,9 @@ export function getTickerGridProfile(ticker) {
 export function calcGridScore(m) {
   if (!m) return { score: 0, label: 'AVOID', components: [], recs: [] };
 
+  const V       = GRID_CONFIG.VIABILITY;
+  const SQ      = GRID_CONFIG.SQUEEZE;
+  const LAT     = GRID_CONFIG.CVD_LATERAL;
   const adx     = m.adx?.adx ?? 0;
   const bbLabel = m.bb?.label ?? 'normal';
   const bbBw    = m.bbBw ?? 0;
@@ -216,29 +221,55 @@ export function calcGridScore(m) {
   const range   = m.gridRange;
   const poc5d   = m.poc5d  ?? 0;
   const poc14d  = m.poc14d ?? 0;
-  const cvdDelta   = Math.abs(m.cvd5d ?? 0);
-  const vol5d      = Math.max(m.volume5d ?? 1, 1);
-  const isLateral  = (cvdDelta / vol5d) < CFG.CVD_LATERAL_RATIO;
+  const cvdDelta = Math.abs(m.cvd5d ?? 0);
+  const vol5d    = Math.max(m.volume5d ?? 1, 1);
+  const cvdRatio = cvdDelta / vol5d;
+  const atr      = m.atr ?? 0;
+  const dcW      = m.dc20?.width ?? 0;
+  const dcAtr    = atr > 0 ? dcW / atr : 99;
 
   const components = [];
   let score = 0;
 
-  // ADX (max 3.0)
-  const adxScore = adx < 15 ? 3.0 : adx < 20 ? 2.0 : adx < 25 ? 1.0 : 0.0;
+  // ADX (max 3.0) — unified thresholds via VIABILITY.ADX_IDEAL/ADX_BLOCK
+  const adxScore = adx < V.ADX_IDEAL       ? 3.0
+                 : adx < V.ADX_IDEAL + 4   ? 2.0   // 18–22 mild
+                 : adx < V.ADX_BLOCK + 3   ? 1.0   // 22–25 caution
+                 : 0.0;
   components.push({ label: 'ADX Trend', score: adxScore, max: 3.0,
-    detail: `ADX ${adx.toFixed(1)} — ${adx < 15 ? 'ideal range' : adx < 20 ? 'low' : adx < 25 ? 'mild' : 'strong trend'}` });
+    detail: `ADX ${adx.toFixed(1)} — ${adx < V.ADX_IDEAL ? `ideal (<${V.ADX_IDEAL})` : adx < V.ADX_BLOCK ? 'mild' : 'trending ✗'}` });
   score += adxScore;
 
-  // BB Width (max 2.0)
-  const bbScore = bbLabel === 'squeeze' ? 2.0 : bbLabel === 'normal' ? 1.0 : 0.0;
-  components.push({ label: 'BB Width', score: bbScore, max: 2.0,
+  // BB Width (max 1.0) — reduced from 2.0; overlap with DC Squeeze is intentional
+  const bbScore = bbLabel === 'squeeze' ? 1.0 : bbLabel === 'normal' ? 0.5 : 0.0;
+  components.push({ label: 'BB Width', score: bbScore, max: 1.0,
     detail: `${bbBw.toFixed(1)}% — ${bbLabel === 'squeeze' ? 'compressed ✓' : bbLabel === 'normal' ? 'normal' : 'expanded ✗'}` });
   score += bbScore;
 
-  // CVD lateral (max 1.5)
-  const cvdScore = isLateral ? 1.5 : 0.0;
-  components.push({ label: 'CVD Flow', score: cvdScore, max: 1.5,
-    detail: isLateral ? 'Lateral — no trend pressure ✓' : 'Directional — trend in progress ✗' });
+  // Donchian Squeeze (max 1.5) — NEW: canonical range detector
+  const bbTight = bbBw < SQ.BB_WIDTH_MAX;
+  const dcTight = dcAtr < SQ.DC_ATR_RATIO_MAX;
+  const dqScore = (bbTight && dcTight) ? 1.5 : (bbTight || dcTight) ? 0.75 : 0.0;
+  components.push({ label: 'DC Squeeze', score: dqScore, max: 1.5,
+    detail: (bbTight && dcTight) ? `BB<${SQ.BB_WIDTH_MAX}% + DC20/ATR<${SQ.DC_ATR_RATIO_MAX} ✓`
+          : (bbTight || dcTight) ? `Partial: ${bbTight ? 'BB tight' : 'DC tight'} only`
+          : `BB=${bbBw.toFixed(1)}% DC/ATR=${dcAtr.toFixed(2)} — not compressed` });
+  score += dqScore;
+
+  // CVD lateral (max 1.5) — gradient replaces binary cliff
+  let cvdScore, cvdDetail;
+  if (cvdRatio <= LAT.FULL_SCORE_BELOW) {
+    cvdScore = 1.5;
+    cvdDetail = `Lateral (${cvdRatio.toFixed(2)} ≤ ${LAT.FULL_SCORE_BELOW}) — no trend pressure ✓`;
+  } else if (cvdRatio >= LAT.ZERO_SCORE_ABOVE) {
+    cvdScore = 0.0;
+    cvdDetail = `Directional (${cvdRatio.toFixed(2)} ≥ ${LAT.ZERO_SCORE_ABOVE}) — trend in progress ✗`;
+  } else {
+    const t = (LAT.ZERO_SCORE_ABOVE - cvdRatio) / (LAT.ZERO_SCORE_ABOVE - LAT.FULL_SCORE_BELOW);
+    cvdScore = Math.round(t * 1.5 * 10) / 10;
+    cvdDetail = `Mixed (${cvdRatio.toFixed(2)}) — partial lateral`;
+  }
+  components.push({ label: 'CVD Flow', score: cvdScore, max: 1.5, detail: cvdDetail });
   score += cvdScore;
 
   // POC in range (max 2.0)
@@ -255,7 +286,7 @@ export function calcGridScore(m) {
   components.push({ label: 'POC in Range', score: pocScore, max: 2.0, detail: pocDetail });
   score += pocScore;
 
-  // RSI neutral (max 1.0)
+  // RSI neutral (max 1.0) — kept
   const rsiScore = (rsi >= 40 && rsi <= 60) ? 1.0 : (rsi >= 35 && rsi <= 65) ? 0.5 : 0.0;
   components.push({ label: 'RSI Neutral', score: rsiScore, max: 1.0,
     detail: `RSI ${rsi.toFixed(1)} — ${rsiScore === 1.0 ? 'neutral zone ✓' : rsiScore === 0.5 ? 'acceptable' : 'extreme ✗'}` });
@@ -276,12 +307,14 @@ export function calcGridScore(m) {
 
   // Dynamic recommendations (what's missing)
   const recs = [];
-  if (adxScore < 2.0) recs.push(adx >= 25 ? 'Wait for ADX < 20 (trend too strong)' : 'ADX improving — watch for drop below 20');
-  if (bbScore   < 2.0) recs.push(bbLabel === 'expanded' ? 'Wait for BB compression (squeeze)' : 'Watch for BB squeeze for optimal entry');
-  if (!isLateral)      recs.push('CVD directional — wait for sideways accumulation');
+  if (adxScore < 2.0) recs.push(adx >= V.ADX_BLOCK ? `Wait for ADX < ${V.ADX_IDEAL} (trend too strong)` : `ADX improving — watch for drop below ${V.ADX_IDEAL}`);
+  if (bbScore   < 1.0) recs.push(bbLabel === 'expanded' ? 'Wait for BB compression (squeeze)' : 'Watch for BB squeeze for optimal entry');
+  if (dqScore   < 1.5) recs.push(dqScore === 0 ? 'No squeeze: price not range-compressed — grid edge unclear' : 'Partial squeeze — wait for both BB + DC20 to tighten');
+  if (cvdRatio > LAT.FULL_SCORE_BELOW) recs.push(`CVD ratio ${cvdRatio.toFixed(2)} — wait for drop below ${LAT.FULL_SCORE_BELOW} (lateral flow)`);
   if (pocScore  < 2.0 && range?.rangeLow != null) recs.push('Consider widening range to include both POC5d and POC14d');
   if (rsiScore  < 0.5) recs.push(`RSI ${rsi.toFixed(0)} extreme — wait for 40–60 range`);
   if (fundScore === 0) recs.push('Funding elevated — crowded trade, higher liquidation risk');
+  if (['BREAK_UP','BREAK_DOWN'].includes(m.dc20Pos)) recs.push(`Donchian20 ${m.dc20Pos.replace('_',' ')} — breakout in progress, defer grid`);
 
   return { score: rounded, label, components, recs };
 }

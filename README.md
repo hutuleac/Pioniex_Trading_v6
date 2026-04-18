@@ -1,4 +1,4 @@
-# CIM — Crypto Intelligence Matrix `v5.4`
+# CIM — Crypto Intelligence Matrix `v6.2`
 
 A client-side crypto futures intelligence dashboard for 4H setups. Pulls live data from Binance Futures (primary) and Bybit V5 (fallback), calculates all indicators locally, and outputs signals, a composite score, and bot parameters for each tracked symbol.
 

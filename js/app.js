@@ -125,7 +125,7 @@ async function fetchSingleTicker(name, symbol) {
     m.poc5d, m.avwap5d, m.poc14d, m.avwap14d, m.avwap30d,
     m.cvd5d, m.cvd14d, m.cvd30d,
     m.structure4h, m.structure30d, m.sweep, m.fvgList,
-    m.emaFast, m.emaSlow
+    m.emaFast, m.emaSlow, m.dc20Pos
   );
   const bot      = calcBotParams(pf.price, m.atr, score, direction, m.poc5d, m.poc14d, m.avwap5d, m.fvgList);
   const mFull    = { ...m, price: pf.price, funding: pf.funding };
@@ -135,7 +135,7 @@ async function fetchSingleTicker(name, symbol) {
   const gridProfile = getTickerGridProfile(name);
   mFull.gridProfile    = gridProfile;
   mFull.gridScore      = score;
-  mFull.gridViability  = assessGridViability(mFull.atrPct ?? 0, mFull.adx?.adx ?? 0, mFull.rsi, mFull.bbBw ?? 0, mFull.structure4h);
+  mFull.gridViability  = assessGridViability(mFull.atrPct ?? 0, mFull.adx?.adx ?? 0, mFull.rsi, mFull.bbBw ?? 0, mFull.structure4h, mFull.dc20Pos);
   mFull.gridDirection  = selectGridDirection(mFull.structure4h, score);
   mFull.gridRange      = calcRangeFromATR(pf.price, mFull.atrPct ?? 1, gridProfile.rangeMultiplier, mFull.gridDirection.type);
   mFull.gridMode       = selectGridMode(mFull.gridRange.rangeWidthPct);
