@@ -583,6 +583,7 @@ th .tiptext{display:none !important;}
 
 #sheet-content {
   overflow-y: auto;
+  overflow-x: hidden;
   flex: 1;
   padding: 12px 16px 32px;
   -webkit-overflow-scrolling: touch;
@@ -591,6 +592,7 @@ th .tiptext{display:none !important;}
 /* Sheet detail table */
 .sheet-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-family: 'IBM Plex Mono', monospace;
   font-size: .7rem;

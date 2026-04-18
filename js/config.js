@@ -4,7 +4,7 @@
 //  CONFIG  (mirrors Trading.py CFG class)
 // ══════════════════════════════════════════════════════════════════
 export const CFG = {
-  APP_VERSION          : '6.3',
+  APP_VERSION          : '6.4',
   REFRESH_INTERVAL_SEC : 1200,
   OI_PERIOD            : "4h",  OI_LIMIT              : 42,
   KLINES_MAIN          : 210,   // 4H×210 — enough for EMA200 + 100 FVG candles
