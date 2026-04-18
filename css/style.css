@@ -479,12 +479,12 @@ th .tiptext{display:none !important;}
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border: 2px solid;
   font-family: 'IBM Plex Mono', monospace;
-  font-size: .72rem;
+  font-size: .86rem;
   font-weight: 700;
   flex-shrink: 0;
 }
@@ -599,6 +599,8 @@ th .tiptext{display:none !important;}
   padding: 5px 0;
   border-bottom: 1px solid rgba(255,255,255,.04);
   vertical-align: middle;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 .sheet-table td:first-child {
   color: var(--text2);

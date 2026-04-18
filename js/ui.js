@@ -232,7 +232,7 @@ export function buildGridCard(name, m, prov = '?') {
   <div class="card-header">
     <div>
       <div class="card-ticker">${tvLink}</div>
-      <div class="card-price">$${fmt(m.price,2)} · ${prov}</div>
+      <div class="card-price">$${fmt(m.price,2)}</div>
     </div>
     <div class="card-meta">
       ${viabBadge}
@@ -342,6 +342,7 @@ export function buildGridSheet(name, m, prov = '?') {
   const recCapPer  = recCount !== '—' && cap ? fmt(cap / recCount, 2) : '—';
   const profitNetPct = m.gridProfitPerGrid?.netPct != null ? (m.gridProfitPerGrid.netPct * 100).toFixed(2) : '—';
   const drawdownPct  = m.gridDrawdown?.drawdownPct   != null ? (m.gridDrawdown.drawdownPct  * 100).toFixed(1) : '—';
+  const drawdownUSDT = cap && m.gridDrawdown?.drawdownPct != null ? fmt(cap * m.gridDrawdown.drawdownPct, 0) : '—';
   const slFmt  = m.gridSL != null ? (m.gridSL < 1 ? m.gridSL.toFixed(4) : m.gridSL.toFixed(2)) : '—';
   const tpFmt  = m.gridTP != null ? (m.gridTP < 1 ? m.gridTP.toFixed(4) : m.gridTP.toFixed(2)) : '—';
   const midEntry = range?.rangeLow != null ? (range.rangeLow + range.rangeHigh) / 2 : null;
@@ -360,6 +361,9 @@ export function buildGridSheet(name, m, prov = '?') {
 <div class="sheet-section-label">Recommendations</div>
 ${recsHtml}
 
+<div class="sheet-section-label">Warnings</div>
+${warnsHtml}
+
 <div class="sheet-section-label" style="color:${gs.score >= 6 ? 'var(--green)' : 'var(--text2)'}">${setupLabel}</div>
 <table class="sheet-table">
   <tr><td>Range</td><td style="color:var(--purple)">$${lo} – $${hi}</td></tr>
@@ -368,7 +372,8 @@ ${recsHtml}
   <tr><td>Take Profit</td><td style="color:var(--green)">$${tpFmt}</td></tr>
   <tr><td>Grid Count</td><td>${recCount}</td></tr>
   <tr><td>Profit / Grid</td><td style="color:var(--green)">${profitNetPct}% net</td></tr>
-  <tr><td>Drawdown (worst)</td><td style="color:var(--yellow)">${drawdownPct}%</td></tr>
+  <tr><td>Drawdown %</td><td style="color:var(--yellow)">${drawdownPct}%</td></tr>
+  <tr><td>Drawdown USDT</td><td style="color:var(--yellow)">-$${drawdownUSDT}</td></tr>
   <tr><td>Capital / Grid</td><td>$${recCapPer} of $${cap}</td></tr>
   <tr><td>Direction</td><td style="color:var(--purple)">${dirLabel}</td></tr>
   <tr><td>Mode</td><td>${m.gridMode?.mode ?? '—'}</td></tr>
@@ -387,9 +392,6 @@ ${recsHtml}
 <div class="sheet-section-label">Range Positioning</div>
 <table class="sheet-table">${pocHtml}
 </table>
-
-<div class="sheet-section-label">Warnings</div>
-${warnsHtml}
 
 ${buildRegimeBlock(m, { includeSqueezeConf: true })}`;
 }
@@ -458,7 +460,7 @@ export function buildDirectionCard(name, m, prov = '?', score = 0, direction = n
   <div class="card-header">
     <div>
       <div class="card-ticker">${tvLinkDir}</div>
-      <div class="card-price">$${fmt(m.price,2)} · ${prov}</div>
+      <div class="card-price">$${fmt(m.price,2)}</div>
     </div>
     <div class="card-meta">
       ${recBadge}
