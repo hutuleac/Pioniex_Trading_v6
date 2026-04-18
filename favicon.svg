@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Dark background -->
+  <rect width="32" height="32" rx="6" fill="#07090f"/>
+  <!-- Hexagon outline -->
+  <polygon points="16,3 27,9 27,23 16,29 5,23 5,9"
+    fill="none" stroke="#00d4ff" stroke-width="1.5"/>
+  <!-- Mini candlestick chart -->
+  <!-- Candle 1 (bear) -->
+  <line x1="10" y1="12" x2="10" y2="22" stroke="#ff1a4b" stroke-width="1"/>
+  <rect x="8.5" y="14" width="3" height="5" fill="#ff1a4b" rx="0.5"/>
+  <!-- Candle 2 (bull) -->
+  <line x1="16" y1="10" x2="16" y2="22" stroke="#00e676" stroke-width="1"/>
+  <rect x="14.5" y="12" width="3" height="7" fill="#00e676" rx="0.5"/>
+  <!-- Candle 3 (bull) -->
+  <line x1="22" y1="9" x2="22" y2="20" stroke="#00e676" stroke-width="1"/>
+  <rect x="20.5" y="11" width="3" height="6" fill="#00e676" rx="0.5"/>
+</svg>

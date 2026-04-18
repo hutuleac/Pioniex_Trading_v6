@@ -1,0 +1,33 @@
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Planning artifacts
+.planning/
+
+# Claude Code local config
+.claude/
+
+# Reference-only files (not for deployment)
+index_to_learn_from.html
+
+# Python (dev server)
+*.py
+*.pyc
+__pycache__/
+
+# Node (dev server)
+node_modules/
+npm-debug.log*
+
+# Local env
+.env
+.env.local
