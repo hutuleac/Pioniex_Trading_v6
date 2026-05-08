@@ -76,11 +76,13 @@
       </div>
       <div class="legend-box">
         <div class="legend-box-title">Quick Reference</div>
-        <div class="legend-box-item">RSI &lt;30 = Oversold entry · &gt;70 = Overbought exit</div>
+        <div class="legend-box-item">RSI &lt;30 = Oversold · &gt;70 = Overbought · &lt;25/&gt;75 = Extreme (penalty)</div>
         <div class="legend-box-item">Flow &gt;+5% = Buy dominant · &lt;−5% = Sell dominant</div>
         <div class="legend-box-item">OI↑+Price↑ = Real bull · OI↑+Price↓ = Squeeze risk</div>
-        <div class="legend-box-item">CVD all [ACC] = Full Accumulation (high-confidence)</div>
+        <div class="legend-box-item">CVD all [ACC] = Full Accumulation (high-confidence bull)</div>
         <div class="legend-box-item">POC Conf [YES] = POC5d ≈ POC14d → strong S/R zone</div>
+        <div class="legend-box-item">ADX &lt;18 = Ranging · 18–22 = Developing · &gt;22 = Trending</div>
+        <div class="legend-box-item">Regime SQUEEZE = coiling → breakout expected soon</div>
         <div class="legend-box-item" style="margin-top:4px;color:var(--cyan2)">Score ≥ 7.5 → Bot parameters activated</div>
       </div>
       <div class="legend-box">
@@ -91,7 +93,8 @@
         <div class="legend-box-item">Trend Swing (AVWAP5d + Flow) — up to +1.5</div>
         <div class="legend-box-item">CVD Quality (5d/14d/30d alignment) — up to +1.0</div>
         <div class="legend-box-item">EMA · FVG · POC Conf — +0.5 each</div>
-        <div class="legend-box-item" style="margin-top:4px;color:var(--red)">Penalties: RSI extreme · OI squeeze · Struct conflict</div>
+        <div class="legend-box-item" style="margin-top:4px;color:var(--red)">Penalties: RSI extreme −0.5 · OI squeeze −0.5/−1.0</div>
+        <div class="legend-box-item" style="color:var(--red)">Structure conflict −0.5 · DC20 range −0.25</div>
       </div>
     </div>
 
