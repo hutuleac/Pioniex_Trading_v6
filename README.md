@@ -1,71 +1,96 @@
 # CIM — Crypto Intelligence Matrix `v6.2`
 
-A client-side crypto futures intelligence dashboard for 4H setups. Pulls live data from Binance Futures (primary) and Bybit V5 (fallback), calculates all indicators locally, and outputs signals, a composite score, and bot parameters for each tracked symbol.
+**Live:** [pioniex.vercel.app](https://pioniex.vercel.app/)
 
-No build tools, no npm, no backend — pure ES Modules served over any static HTTP server.
+Real-time crypto futures dashboard. Pulls live market data from Binance Futures and Bybit V5, runs all technical analysis in the browser, and scores each asset 0–10 to surface high-probability 4H setups. No backend. No API keys. No build step.
+
+---
+
+## Screenshots
+
+### Dashboard — Fast Decision Table
+![Dashboard](docs/screenshots/dashboard.png)
+
+### Signal Cards & Grid Bot Advisor
+![Grid Bot Advisor](docs/screenshots/grid-bot.png)
+
+### Mobile View
+![Mobile](docs/screenshots/mobile.png)
+
+---
+
+## What it does
+
+You open the dashboard and see a table of crypto futures ranked by signal score. Each row shows: price, RSI, funding rate, order flow bias, market structure, and a composite score (0–10). Click any row to expand a deep card with full indicator breakdown, score components, and — if the score is high enough — ready-to-use bot parameters.
+
+Below the decision table sits the **Grid Bot Advisor**: ATR-derived grid ranges, grid count, profit-per-grid, worst-case drawdown, and SL/TP levels for each tracked symbol.
+
+**Signal color system:** green = bullish, red = bearish, yellow = caution/divergence, gray = neutral.
 
 ---
 
 ## Features
 
-- **Market Pulse Strip** — real-time topbar pills: 24h Volume, Fear & Greed index (alternative.me), Smart Money (Binance top trader L/S ratio)
-- **Fast Decision Table** — click any row to expand a deep card with 4 indicator groups + score breakdown + direction checklist
-- **Live Metrics Table** — price, funding rate, RSI, ATR, flow%, POC, AVWAP, CVD, OI, structure, EMA, FVG for each symbol
-- **Score Engine (0–10)** — weighted composite score with breakdown; score ≥ 7.5 activates bot parameters
-- **Bot Parameters** — entry, SL, TP1/TP2, leverage, position size, R:R, trail trigger — calculated per active symbol
-- **Symbol Manager** — add/remove symbols at runtime; Binance or Bybit used automatically per symbol
-- **Auto-refresh** — fetches every 20 minutes; countdown timer shown in topbar
-- **Grid Bot Advisor** — per-ticker Spot Grid setup guide: recommended range (ATR-based), grid count, mode (Arithmetic/Geometric), net profit/grid, SL/TP levels, worst-case drawdown; includes compact **Active Signals strip** (Setup · Bot Grid · Presiune) per card
-- **Compact Metrics View** — Full Metrics table defaults to 15 key columns; "⊞ Show All" toggle reveals all 25 on demand
-- **Responsive** — adapts from 4K (max-width 1440px) down to mobile (480px)
+| Feature | Description |
+|---------|-------------|
+| **Market Pulse topbar** | Live pills: 24h Volume · Fear & Greed (alternative.me) · Smart Money (Binance top-trader L/S ratio) |
+| **Fast Decision Table** | Quick signal overview — click any row to expand a deep analysis card |
+| **Deep Card** | 4 indicator groups (Trend · Momentum · Volatility · Setup) + score breakdown + direction checklist |
+| **Score Engine (0–10)** | Weighted composite score; ≥ 7.5 activates bot parameters |
+| **Bot Parameters** | Entry, SL, TP1/TP2, leverage, position size, R:R — auto-calculated per asset |
+| **Grid Bot Advisor** | Per-ticker spot grid setup: ATR-based range, grid count, net profit/grid, drawdown, SL/TP |
+| **Full Metrics Table** | 15 key columns by default; toggle to show all 25 (price · funding · RSI · ATR · flow% · POC · AVWAP · CVD · OI · structure · EMA · FVG) |
+| **Symbol Manager** | Add/remove tickers at runtime — validated against Binance/Bybit, persisted in localStorage |
+| **Auto-refresh** | Fetches every 20 minutes; countdown timer in topbar |
+| **Responsive** | 4K (1440px max) down to 480px mobile |
 
 ---
 
 ## Quick Start
 
-ES Modules require an HTTP server — opening `index.html` directly via `file://` will not work.
+ES Modules require HTTP — `file://` won't work.
 
 ```bash
 # Python (no install required)
 python -m http.server 8080
 
-# Node (requires npx)
+# Node
 npx serve .
 ```
 
-Then open `http://localhost:8080/` in your browser.
+Open `http://localhost:8080/`.
+
+Deployed on Vercel — pushes to `master` auto-deploy. No CI, no tests, no build step needed.
 
 ---
 
 ## Project Structure
 
 ```
-├── index.html          # Page skeleton — HTML only, no inline JS or CSS
+├── index.html          # Page skeleton — HTML only, no inline JS/CSS
 ├── css/
-│   └── style.css       # All styles
+│   └── style.css       # All styles — CSS variables, responsive breakpoints
 └── js/
-    ├── config.js       # CFG + GRID_CONFIG constants, API base URLs, SIG_TIPS, LEGENDS, localStorage helpers
-    ├── grid.js         # Pure grid bot calculations (9 exported functions, no side effects)
+    ├── config.js       # CFG + GRID_CONFIG constants, API base URLs, localStorage helpers
     ├── api.js          # tryFetch, Binance/Bybit endpoints, unified fetch wrappers
-    ├── indicators.js   # All pure calculations + interpretSignals, calcScore, calcBotParams
-    ├── ui.js           # Formatters and DOM string builders
+    ├── indicators.js   # All calculations: RSI/ATR/EMA/POC/AVWAP/CVD/FVG + calcScore + calcBotParams
+    ├── ui.js           # DOM string builders: buildTableRow, buildDeepCard, buildBotCard, renderGridPanel
+    ├── grid.js         # Grid bot math — pure functions, no side effects
     └── app.js          # State, orchestration, event handlers, init
 ```
 
-### Module Dependency Graph
+Module dependency graph (no circular dependencies):
 
 ```
 index.html
   └── css/style.css
   └── js/app.js
         ├── js/config.js
-        ├── js/grid.js         (no dependencies — pure functions)
+        ├── js/grid.js         (pure — no imports)
         ├── js/api.js          → config.js
         ├── js/indicators.js   → config.js, api.js
         └── js/ui.js           → config.js, indicators.js
 ```
-
-No circular dependencies.
 
 ---
 
@@ -74,9 +99,9 @@ No circular dependencies.
 | Source | Used for |
 |--------|----------|
 | `fapi.binance.com` | Price, funding rate, klines, open interest (primary) |
-| `api.bybit.com` | All of the above (fallback when Binance fails) |
+| `api.bybit.com/v5` | All of the above (fallback when Binance fails) |
 
-Bybit CVD uses a Williams %R volume approximation when taker buy volume is unavailable.
+No API keys required — all public market data endpoints.
 
 ---
 
@@ -85,22 +110,22 @@ Bybit CVD uses a Williams %R volume approximation when taker buy volume is unava
 | Indicator | Timeframe | Notes |
 |-----------|-----------|-------|
 | RSI | 4H × 210 candles | 14-period |
-| ATR | 4H | 14-period; used for SL/TP sizing |
+| ATR | 4H | 14-period; drives SL/TP sizing |
 | EMA 50 / 200 | 4H | Golden/death cross detection |
 | POC + AVWAP | 5d / 14d / 30d | Volume-profile point of control + anchored VWAP |
 | CVD | 5d / 14d / 30d | Cumulative Volume Delta — accumulation vs. distribution |
 | Market Structure | 4H / 30d | HH+HL = Bullish · LH+LL = Bearish |
-| FVG | Last 100 × 4H candles | Up to 5 intact fair value gaps, sorted by proximity |
-| Flow% 24h | 1H × 24 candles | (BuyVol − SellVol) / TotalVol |
-| Open Interest | 4H × 42 periods | 7-day % change used for scoring |
+| FVG | Last 100 × 4H | Up to 5 intact fair value gaps, sorted by proximity |
+| Flow% 24h | 1H × 24 | (BuyVol − SellVol) / TotalVol |
+| Open Interest | 4H × 42 | 7-day % change used for scoring |
 | Volume Spike | 4H | Current vs. 20-candle average; ≥ 2× = spike |
-| Liquidity Sweep | Latest 4H candle | Compares against all-time high/low of prior candles |
+| Liquidity Sweep | Latest 4H | Compares against all-time high/low of prior candles |
 
 ---
 
 ## Scoring
 
-Scores range from **0 to 10**. A score ≥ 8.0 generates bot parameters.
+Scores range **0–10**. Score ≥ 7.5 activates bot parameters.
 
 | Component | Max Points |
 |-----------|-----------|
@@ -115,9 +140,13 @@ Scores range from **0 to 10**. A score ≥ 8.0 generates bot parameters.
 
 **Penalties:** RSI extreme (−0.5) · OI squeeze on short (−0.5 to −1.0) · Structure timeframe conflict (−0.5)
 
+**Thresholds:** ≥ 7.5 = bot active · 6–7.4 = developing · < 6 = avoid
+
 ---
 
-## Bot Parameters (score ≥ 7.5)
+## Bot Parameters
+
+Activated when score ≥ 7.5.
 
 | Parameter | Formula |
 |-----------|---------|
@@ -125,13 +154,13 @@ Scores range from **0 to 10**. A score ≥ 8.0 generates bot parameters.
 | Stop Loss | Entry ± 1.5 × ATR4H |
 | Take Profit 1 | Entry ± 3.0 × ATR4H (close 50%, move SL to breakeven) |
 | Take Profit 2 | Entry ± 5.25 × ATR4H (trail remaining 50%) |
-| Leverage | Score ≥ 9.5 → 6x · ≥ 9.0 → 5x · ≥ 8.5 → 4x · ≥ 8.0 → 3x · ≥ 7.5 → 2x |
+| Leverage | ≥ 9.5 → 6× · ≥ 9.0 → 5× · ≥ 8.5 → 4× · ≥ 8.0 → 3× · ≥ 7.5 → 2× |
 
 ---
 
 ## Configuration
 
-All parameters are in `js/config.js` under the `CFG` object. Key values:
+All parameters in `js/config.js` under the `CFG` object:
 
 ```js
 REFRESH_INTERVAL_SEC : 1200   // 20 minutes
@@ -143,44 +172,42 @@ TP1_ATR_MULT         : 3.0
 TP2_ATR_MULT         : 5.25
 ```
 
-Grid bot parameters are in `GRID_CONFIG` (also in `js/config.js`):
+Grid bot parameters in `GRID_CONFIG`:
 
 ```js
-DEFAULT_CAPITAL        : 500    // USDT per session (overridable via Config modal → saved in localStorage)
+DEFAULT_CAPITAL        : 500    // USDT per session (overridable via Config modal)
 FEE_PCT                : 0.001  // 0.1% per side (0.2% round-trip per grid)
 TARGET_NET_PCT         : 0.006  // 0.6% target net profit per grid
-MIN_NET_PCT            : 0.005  // minimum viable net profit per grid
-SL_BUFFER_PCT          : 0.10   // SL sits 10% below range lower bound
-TP_BUFFER_PCT          : 0.05   // TP sits 5% above range upper bound
 ATR_MULTIPLIER_DEFAULT : 2.5    // range = price ± (ATR% × multiplier)
-GEOMETRIC_THRESHOLD_PCT: 20     // use Geometric mode when range width ≥ 20%
+GEOMETRIC_THRESHOLD_PCT: 20     // use Geometric mode when range ≥ 20%
 ```
 
-Default symbols: BTC, ETH, BNB, SOL, TRX, SUI, HYPE — all editable at runtime via the Config modal (add/remove with live Binance/Bybit validation, persisted in localStorage).
+Default symbols: BTC, ETH, BNB, SOL, TRX, SUI, HYPE — all editable at runtime via the Config modal, persisted in localStorage.
 
 ---
 
 ## Browser Requirements
 
-Any modern browser with ES Module support (Chrome 61+, Firefox 60+, Safari 11+, Edge 79+). Must be served over HTTP — `file://` is not supported.
+Any modern browser with ES Module support: Chrome 61+, Firefox 60+, Safari 11+, Edge 79+. Must be served over HTTP — `file://` is not supported.
 
 ---
 
 ## Changelog
 
+### v6.2 — 2026-05-08
+- Version badge updated to v6.2
+
 ### v5.4 — 2026-04-02
-- **Signal Analysis section removed** — signals surfaced directly inside each Grid Bot card as a compact "Active Signals" strip (Setup · Bot Grid · Presiune)
-- **Grid Bot Advisor promoted** — moved above Full Metrics table for faster access after the Fast Decision table
-- **Contextual subtitles added** — Fast Decision explains the Rec column (directional signal, not grid); Grid Bot Advisor explains the grid vs. directional trade distinction
-- **TradingView links** — symbol names in Fast Decision table link directly to TradingView chart (v5.3)
-- **Grid risk tightening** — stricter ADX/structure viability thresholds, improved warning messages (v5.3)
-- **Incremental ticker rendering** — tickers render as data arrives rather than waiting for full batch (v5.3)
-- **Default symbol list** — BTC, BNB, SOL, SUI, TRX, DOGE, XLM, XRP, HYPE (v5.3)
+- Signal Analysis section removed — signals surfaced inside each Grid Bot card as compact "Active Signals" strip (Setup · Bot Grid · Presiune)
+- Grid Bot Advisor promoted above Full Metrics table
+- Contextual subtitles added to Fast Decision and Grid Bot sections
+- TradingView links on symbol names in Fast Decision table
+- Grid risk tightening — stricter ADX/structure viability thresholds
+- Incremental ticker rendering — renders as data arrives, not after full batch
 
 ### v5.2 — 2026-03-22
 - Visual polish: signal edge bars, favicon, max-width layout
 - Deep card: 4 indicator groups + score breakdown table
-- Score Analysis section consolidated into deep card
 
 ### v5.1 — 2026-03-15
 - CIM rebrand, Market Pulse topbar pills (Fear & Greed · Smart Money · 24h Volume)
@@ -188,3 +215,9 @@ Any modern browser with ES Module support (Chrome 61+, Firefox 60+, Safari 11+, 
 
 ### v5.0 — 2026-03-10
 - Deep card UX polish, compact score table, initial v5 architecture
+
+---
+
+## License
+
+MIT
