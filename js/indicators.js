@@ -434,7 +434,7 @@ export function interpretSignals(price, rsi, atr, flow, oiChange,
 export function calcScore(price, atr, rsi, flow, oiChange,
   poc5d, avwap5d, poc14d, avwap14d, avwap30d,
   cvd5d, cvd14d, cvd30d, structure4h, structure30d,
-  sweep, fvgList, emaFast, emaSlow, dc20Pos)
+  sweep, fvgList, emaFast, emaSlow, dc20Pos, funding = 0, regime = 'MIXED')
 {
   const { bearMac: bMac, bullMac: uMac, nPoc5d: nP5, nPoc14d: nP14,
           sBull, sBear, dBull, dBear, buyP, selP, shOp, sqR,
@@ -477,10 +477,10 @@ export function calcScore(price, atr, rsi, flow, oiChange,
   }
 
   // 4. CVD QUALITY
-  if      (aAcc && direction==="LONG")   { score+=1.0; detail.push(["CVD ACC all 3 TFs",+1.0,"CVD5d/14d/30d all positive"]); }
-  else if (aDis && direction==="SHORT")  { score+=1.0; detail.push(["CVD DIS all 3 TFs",+1.0,"CVD5d/14d/30d all negative"]); }
-  else if (corr && direction==="LONG")   { score+=0.5; detail.push(["CVD Pullback in BULL",+0.5,"Recent DIS(5d) in bull trend"]); }
-  else if (bnce && direction==="SHORT")  { score+=0.5; detail.push(["CVD Bounce in BEAR",+0.5,"Recent ACC(5d) in bear trend"]); }
+  if      (aAcc && direction==="LONG")   { score+=1.5; detail.push(["CVD ACC all 3 TFs",+1.5,"CVD5d/14d/30d all positive"]); }
+  else if (aDis && direction==="SHORT")  { score+=1.5; detail.push(["CVD DIS all 3 TFs",+1.5,"CVD5d/14d/30d all negative"]); }
+  else if (corr && direction==="LONG")   { score+=0.75; detail.push(["CVD Pullback in BULL",+0.75,"Recent DIS(5d) in bull trend"]); }
+  else if (bnce && direction==="SHORT")  { score+=0.75; detail.push(["CVD Bounce in BEAR",+0.75,"Recent ACC(5d) in bear trend"]); }
   else if (aAcc && direction==="SHORT")  { score-=0.3; detail.push(["CVD ACC contra SHORT",-0.3,"CVD acc contradicts short"]); }
   else if (aDis && direction==="LONG")   { score-=0.3; detail.push(["CVD DIS contra LONG",-0.3,"CVD dis contradicts long"]); }
   else detail.push(["CVD mixed",0.0,"Inconsistent across TFs"]);
@@ -506,10 +506,10 @@ export function calcScore(price, atr, rsi, flow, oiChange,
   if (emaFast>0 && emaSlow>0) {
     const eb = emaFast>emaSlow && price>emaFast;
     const eB = emaFast<emaSlow && price<emaFast;
-    if      (direction==="LONG"  && eb) { score+=0.5; detail.push(["EMA50/200 aligned LONG",+0.5,"Price>EMA50>EMA200"]); }
-    else if (direction==="SHORT" && eB) { score+=0.5; detail.push(["EMA50/200 aligned SHORT",+0.5,"Price<EMA50<EMA200"]); }
-    else if (direction==="LONG"  && eB) { score-=0.5; detail.push(["EMA50/200 contra LONG",-0.5,"Price<EMA50<EMA200"]); }
-    else if (direction==="SHORT" && eb) { score-=0.5; detail.push(["EMA50/200 contra SHORT",-0.5,"Price>EMA50>EMA200"]); }
+    if      (direction==="LONG"  && eb) { score+=0.25; detail.push(["EMA50/200 aligned LONG",+0.25,"Price>EMA50>EMA200"]); }
+    else if (direction==="SHORT" && eB) { score+=0.25; detail.push(["EMA50/200 aligned SHORT",+0.25,"Price<EMA50<EMA200"]); }
+    else if (direction==="LONG"  && eB) { score-=0.25; detail.push(["EMA50/200 contra LONG",-0.25,"Price<EMA50<EMA200"]); }
+    else if (direction==="SHORT" && eb) { score-=0.25; detail.push(["EMA50/200 contra SHORT",-0.25,"Price>EMA50>EMA200"]); }
   }
 
   // 6. FVG
@@ -541,9 +541,18 @@ export function calcScore(price, atr, rsi, flow, oiChange,
   else if (direction==="LONG"  && oiChange<-CFG.OI_SQUEEZE_HIGH) { score-=1.0; detail.push([`OI<-${CFG.OI_SQUEEZE_HIGH}% on LONG`,-1.0,"Massive long liquidations"]); }
   if (structure4h!==structure30d && structure4h!=="Neutral" && structure30d!=="Neutral")
     { score-=0.5; detail.push(["Struct conflict",-0.5,`4H=${structure4h} vs 30d=${structure30d}`]); }
-  // DC20 range indecision — soft penalty when directional setup trapped inside Donchian range
-  if (direction && dc20Pos === 'INSIDE')
-    { score-=0.25; detail.push(["DC20 range indecision",-0.25,"Direction inside Donchian20 range — grid regime"]); }
+  // DC20 range indecision — only penalise when regime confirms ranging (not just any INSIDE candle)
+  if (direction && dc20Pos === 'INSIDE' && regime === 'RANGING')
+    { score-=0.25; detail.push(["DC20 range indecision",-0.25,"Direction inside DC20 range — confirmed ranging market"]); }
+
+  // FUNDING RATE — most crypto-native signal; penalise crowded side, reward tailwind
+  if (direction && funding != null) {
+    if      (direction==="LONG"  && funding > 0.1)  { score-=0.5;  detail.push(["Funding crowded LONG", -0.5,  `Funding ${funding.toFixed(3)}% — longs paying heavily`]); }
+    else if (direction==="SHORT" && funding < -0.1)  { score-=0.5;  detail.push(["Funding crowded SHORT",-0.5,  `Funding ${funding.toFixed(3)}% — shorts paying heavily`]); }
+    else if (direction==="LONG"  && funding < 0)     { score+=0.3;  detail.push(["Funding favors LONG",  +0.3,  `Funding ${funding.toFixed(3)}% — shorts paying, tailwind`]); }
+    else if (direction==="SHORT" && funding > 0)     { score+=0.3;  detail.push(["Funding favors SHORT", +0.3,  `Funding ${funding.toFixed(3)}% — longs paying, tailwind`]); }
+    else detail.push(["Funding neutral", 0.0, `Funding ${funding.toFixed(3)}%`]);
+  }
 
   return { score: Math.max(0, Math.min(10, Math.round(score*100)/100)), direction, detail };
 }

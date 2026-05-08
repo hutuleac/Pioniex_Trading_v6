@@ -90,7 +90,7 @@ export const LEGENDS = [
   ["Fibonacci (50 candles)",
     `Fibonacci retracement levels (0%, 23.6%, 38.2%, 50%, 61.8%, 78.6%, 100%) calculated from the swing high/low of the last 50 4H candles. Price zone label shows which level range price sits in. 38.2–61.8% = healthy retracement zone in a trend. Above 78.6% = deep retracement, trend may be failing. Visible in the deep card.`],
   [`Score 0–10`,
-    `Composite setup quality score. Max components: Trend Macro (+2.0) + Pressure (+2.0) + Setup (+2.0) + Trend Swing (+1.5) + CVD Quality (+1.0) + EMA (+0.5) + FVG (+0.5) + POC Conf (+0.5) = 10.0. Penalties: RSI extreme (−0.5), OI squeeze on short (−0.5 to −1.0), Structure 4H/30d conflict (−0.5), DC20 range indecision (−0.25). Score ≥ ${CFG.SCORE_BOT_MIN} activates bot parameters. 8–10 = strong. 6–7.9 = developing. <6 = avoid.`],
+    `Composite setup quality score. Max components: Trend Macro (+2.0) + Pressure (+2.0) + Setup (+2.0) + Trend Swing (+1.5) + CVD Quality (+1.5) + EMA (±0.25) + FVG (+0.5) + POC Conf (+0.5) + Funding (±0.3 to ±0.5) = ~10.75 → clamped to 10. Penalties: RSI extreme (−0.5), OI squeeze on short (−0.5 to −1.0), Structure conflict (−0.5), DC20 range indecision (−0.25, only when Regime=RANGING), Funding crowded (−0.5). Score ≥ ${CFG.SCORE_BOT_MIN} activates bot parameters. 8–10 = strong. 6–7.9 = developing. <6 = avoid.`],
 ];
 
 // ══════════════════════════════════════════════════════════════════
@@ -105,7 +105,7 @@ export const GRID_CONFIG = {
   GEOMETRIC_THRESHOLD_PCT: 20,     // use Geometric mode if range > 20%
 
   // SL/TP buffers scaled to volatility profile (~7-7.5/10 risk)
-  SL_BUFFERS: { stable: 0.06, moderate: 0.09, volatile: 0.13 },
+  SL_BUFFERS: { stable: 0.08, moderate: 0.11, volatile: 0.13 },
   TP_BUFFERS: { stable: 0.04, moderate: 0.05, volatile: 0.07 },
 
   // Viability block/warn thresholds — tightened for conservative grid selection

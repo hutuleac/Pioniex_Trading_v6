@@ -125,7 +125,7 @@ async function fetchSingleTicker(name, symbol) {
     m.poc5d, m.avwap5d, m.poc14d, m.avwap14d, m.avwap30d,
     m.cvd5d, m.cvd14d, m.cvd30d,
     m.structure4h, m.structure30d, m.sweep, m.fvgList,
-    m.emaFast, m.emaSlow, m.dc20Pos
+    m.emaFast, m.emaSlow, m.dc20Pos, pf.funding, m.regime
   );
   const bot      = calcBotParams(pf.price, m.atr, score, direction, m.poc5d, m.poc14d, m.avwap5d, m.fvgList);
   const mFull    = { ...m, price: pf.price, funding: pf.funding };
