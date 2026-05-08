@@ -1,4 +1,4 @@
-# CIM — Crypto Intelligence Matrix `v6.2`
+# CIM — Crypto Intelligence Matrix `v6.4`
 
 **Live:** [pioniex.vercel.app](https://pioniex.vercel.app/)
 
@@ -109,17 +109,25 @@ No API keys required — all public market data endpoints.
 
 | Indicator | Timeframe | Notes |
 |-----------|-----------|-------|
-| RSI | 4H × 210 candles | 14-period |
-| ATR | 4H | 14-period; drives SL/TP sizing |
-| EMA 50 / 200 | 4H | Golden/death cross detection |
+| RSI | 4H × 210 candles | 14-period; extreme >75 / <25 trigger score penalty |
+| ATR | 4H | 14-period; drives SL/TP sizing; ATR% >5% blocks bot activation |
+| EMA 50 / 200 | 4H | Golden/death cross; BULL/PULLBACK = price dipped below EMA50 in uptrend |
 | POC + AVWAP | 5d / 14d / 30d | Volume-profile point of control + anchored VWAP |
-| CVD | 5d / 14d / 30d | Cumulative Volume Delta — accumulation vs. distribution |
-| Market Structure | 4H / 30d | HH+HL = Bullish · LH+LL = Bearish |
-| FVG | Last 100 × 4H | Up to 5 intact fair value gaps, sorted by proximity |
-| Flow% 24h | 1H × 24 | (BuyVol − SellVol) / TotalVol |
-| Open Interest | 4H × 42 | 7-day % change used for scoring |
+| CVD | 5d / 14d / 30d | Cumulative Volume Delta — ACC / DIS / FULL ACCUM (all 3 aligned) |
+| Market Structure | 4H / 30d | HH+HL = Bullish · LH+LL = Bearish · conflict = −0.5 penalty |
+| ADX | 4H | Trend strength: <18 = ranging, >22 = trending; drives Regime + grid viability |
+| Donchian Channel | 4H × 20 / 55 | Short-term range (DC20) + macro context (DC55); INSIDE / BREAK_UP / BREAK_DOWN |
+| Regime | 4H composite | RANGING / TRENDING ↑↓ / SQUEEZE / EXPANSION / MIXED — derived from ADX + BB + DC20 |
+| Squeeze Conf | 4H composite | 0–100 score: BB width + DC20/ATR ratio + ATR% — higher = breakout imminent |
+| Bollinger Bands | 4H × 20 | BW <5% = squeeze · BW >15% = expanded; used in Regime + Squeeze Conf |
+| MACD | 4H | 12/26/9; histogram direction shown in deep card |
+| OBV | 4H | On-Balance Volume trend: UP / DOWN / FLAT; confirms or diverges from price |
+| Fibonacci | 4H × 50 | Retracement zones (23.6% – 78.6%) from last 50-candle swing high/low |
+| FVG | Last 100 × 4H | Up to 5 intact fair value gaps, sorted by proximity; ★ = structure confirmed |
+| Liquidity Sweep | Latest 4H | Pierces all-time high/low then closes back — BUY_SWP / SELL_SWP |
+| Flow% 24h | 1H × 24 | (BuyVol − SellVol) / TotalVol; >±5% = strong pressure |
+| Open Interest | 4H × 42 | 7-day % change; OI↑+Price↓ = squeeze risk |
 | Volume Spike | 4H | Current vs. 20-candle average; ≥ 2× = spike |
-| Liquidity Sweep | Latest 4H | Compares against all-time high/low of prior candles |
 
 ---
 
@@ -138,7 +146,7 @@ Scores range **0–10**. Score ≥ 7.5 activates bot parameters.
 | FVG proximity | +0.5 |
 | POC Confluence (5d ≈ 14d) | +0.5 |
 
-**Penalties:** RSI extreme (−0.5) · OI squeeze on short (−0.5 to −1.0) · Structure timeframe conflict (−0.5)
+**Penalties:** RSI extreme (−0.5) · OI squeeze on short (−0.5 to −1.0) · Structure timeframe conflict (−0.5) · DC20 range indecision (−0.25)
 
 **Thresholds:** ≥ 7.5 = bot active · 6–7.4 = developing · < 6 = avoid
 
@@ -177,9 +185,12 @@ Grid bot parameters in `GRID_CONFIG`:
 ```js
 DEFAULT_CAPITAL        : 500    // USDT per session (overridable via Config modal)
 FEE_PCT                : 0.001  // 0.1% per side (0.2% round-trip per grid)
-TARGET_NET_PCT         : 0.006  // 0.6% target net profit per grid
+TARGET_NET_PCT         : 0.008  // 0.8% target net profit per grid
+MIN_NET_PCT            : 0.006  // minimum viable net profit per grid
 ATR_MULTIPLIER_DEFAULT : 2.5    // range = price ± (ATR% × multiplier)
 GEOMETRIC_THRESHOLD_PCT: 20     // use Geometric mode when range ≥ 20%
+// Viability: ADX_BLOCK 22, RSI_BLOCK 68, BB_MIN 2.0
+// Direction: LONG if score ≥ 6.5, SHORT if score < 4.5
 ```
 
 Default symbols: BTC, ETH, BNB, SOL, TRX, SUI, HYPE — all editable at runtime via the Config modal, persisted in localStorage.
@@ -194,8 +205,29 @@ Any modern browser with ES Module support: Chrome 61+, Firefox 60+, Safari 11+, 
 
 ## Changelog
 
-### v6.2 — 2026-05-08
-- Version badge updated to v6.2
+### v6.4 — 2026-05-08
+- Reference Guide and Indicator Glossary fully rewritten — all 20 indicators documented with thresholds, formulas, and how-to-read guidance
+- Signal card tooltips (SIG_TIPS) rewritten with concrete conditions and score contributions for all 10 categories
+- Quick Reference box updated: ADX ranges, Regime SQUEEZE cue, RSI extreme threshold (25/75)
+- Score Weights box updated: DC20 range −0.25 penalty now listed
+
+### v6.2 — 2026-04-18
+- Donchian Channels 20 + 55 period added — canonical range detector for regime and breakout context
+- Regime composite label: RANGING / TRENDING ↑↓ / SQUEEZE / EXPANSION / MIXED (from ADX + BB + DC20)
+- Squeeze Confidence 0–100 score (BB width + DC20/ATR ratio + ATR percentile)
+- DC20 Squeeze component added to grid score (max +1.5): full score when BB <5% AND DC20/ATR <1.0
+- DC20 breakout check blocks grids when price is breaking the 20-period channel
+- Direction penalty −0.25 added when a directional signal appears inside DC20 range
+- Grid score weights rebalanced: ADX 3.0 + BB 1.0 + DC Squeeze 1.5 + CVD 1.5 + POC 2.0 + RSI 1.0 + Fund 0.5
+- ADX thresholds unified: ADX_IDEAL 18, ADX_BLOCK 22 (replaces 3 inconsistent values)
+- CVD laterality converted from binary cliff to linear ramp (0.15 → 0.30)
+- FVG_ENTRY_PCT relaxed 1.5 → 2.0, POC_CONFLUENCE_PCT relaxed 0.5 → 1.0
+
+### v6.0 — 2026-04-13
+- Mobile-first redesign: table layout replaced with card sections (Grid Bot Advisor + Direction Signals)
+- Bottom sheet for full detail — tap any card to expand
+- Score ring (green/yellow/red) replaces numeric column
+- Entry/SL/TP params shown in Direction sheet when rec = Enter
 
 ### v5.4 — 2026-04-02
 - Signal Analysis section removed — signals surfaced inside each Grid Bot card as compact "Active Signals" strip (Setup · Bot Grid · Presiune)
