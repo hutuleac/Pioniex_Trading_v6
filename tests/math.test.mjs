@@ -269,7 +269,7 @@ await test('glossary matches v7 math', () => {
   for (const s of ['HIGH_SWEEP', 'Grid verdict', 'Expected days in range', 'Liquidation', 'percentile'])
     assert.ok(text.includes(s), `LEGENDS missing "${s}"`);
   for (const s of ['BUY_SWP', 'OBV', 'Fibonacci', 'bot parameters']) assert.ok(!text.includes(s), `stale "${s}"`);
-  assert.equal(C.CFG.APP_VERSION, '6.5');
+  assert.equal(C.CFG.APP_VERSION, '7.0');
 });
 
 // ── Task 12: grid UI ──

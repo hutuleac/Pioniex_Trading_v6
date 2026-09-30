@@ -1,4 +1,4 @@
-# CIM — Crypto Intelligence Matrix `v6.5`
+# CIM — Crypto Intelligence Matrix `v7.0`
 
 **Live:** [pioniex.vercel.app](https://pioniex.vercel.app/)
 
@@ -8,24 +8,20 @@ Real-time crypto futures dashboard. Pulls live market data from Binance Futures 
 
 ## Screenshots
 
-### Dashboard — Fast Decision Table
-![Dashboard](docs/screenshots/dashboard.png)
+### Grid tab (iPhone)
+![Grid](docs/screenshots/v7-mobile-grid.png)
 
-### Signal Cards & Grid Bot Advisor
-![Grid Bot Advisor](docs/screenshots/grid-bot.png)
+### Pionex parameters sheet
+![Sheet](docs/screenshots/v7-mobile-sheet.png)
 
-### Mobile View
-![Mobile](docs/screenshots/mobile.png)
+### Desktop
+![Desktop](docs/screenshots/v7-desktop.png)
 
 ---
 
 ## What it does
 
-You open the dashboard and see a table of crypto futures ranked by signal score. Each row shows: price, RSI, funding rate, order flow bias, market structure, and a composite score (0–10). Click any row to expand a deep card with full indicator breakdown, score components, and — if the score is high enough — ready-to-use bot parameters.
-
-Below the decision table sits the **Grid Bot Advisor**: ATR-derived grid ranges, grid count, profit-per-grid, worst-case drawdown, and SL/TP levels for each tracked symbol.
-
-**Signal color system:** green = bullish, red = bearish, yellow = caution/divergence, gray = neutral.
+Tells you which coin to run a Pionex grid bot on right now, and gives the exact parameters to paste into Pionex: range, grid count, mode, direction and leverage (futures), stop loss and take profit. It also shows the risk: loss at stop for spot, estimated liquidation for futures. Everything is calculated in your browser from Binance Futures data (Bybit fallback). No backend, no API keys, no build step.
 
 ---
 
@@ -56,11 +52,13 @@ python -m http.server 8080
 
 # Node
 npx serve .
+
+node tests/math.test.mjs   # offline math self-check
 ```
 
 Open `http://localhost:8080/`.
 
-Deployed on Vercel — pushes to `master` auto-deploy. No CI, no tests, no build step needed.
+Deployed on Vercel — pushes to `master` auto-deploy. No CI, no build step needed.
 
 ---
 
@@ -152,20 +150,6 @@ Scores range **0–10**. Score ≥ 7.5 activates bot parameters.
 
 ---
 
-## Bot Parameters
-
-Activated when score ≥ 7.5.
-
-| Parameter | Formula |
-|-----------|---------|
-| Entry | FVG top/bottom near price, else current price |
-| Stop Loss | Entry ± 1.5 × ATR4H |
-| Take Profit 1 | Entry ± 3.0 × ATR4H (close 50%, move SL to breakeven) |
-| Take Profit 2 | Entry ± 5.25 × ATR4H (trail remaining 50%) |
-| Leverage | ≥ 9.5 → 6× · ≥ 9.0 → 5× · ≥ 8.5 → 4× · ≥ 8.0 → 3× · ≥ 7.5 → 2× |
-
----
-
 ## Configuration
 
 All parameters in `js/config.js` under the `CFG` object:
@@ -204,6 +188,12 @@ Any modern browser with ES Module support: Chrome 61+, Firefox 60+, Safari 11+, 
 ---
 
 ## Changelog
+
+### v7.0 — 2026-09-30
+- Grid-first UI: Grid · Signals · Settings tabs, bottom tab bar, ranked list
+- Pionex parameters sheet with tap-to-copy, risk box and why-this-score
+- Settings for investment, leverage, fees and tickers with live re-planning
+- Instant open from cache, progressive refresh, refresh on return to the app
 
 ### v6.5 — 2026-09-30
 - Pivot-based structure, fixed grid CVD, per-coin squeeze, Bybit OI sign, SMA-seeded EMA

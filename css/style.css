@@ -11,7 +11,7 @@ html{font-size:16px;-webkit-text-size-adjust:100%}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100dvh;overflow-x:hidden;
   padding-bottom:calc(var(--tab-h) + var(--safe-b));font-variant-numeric:tabular-nums;-webkit-tap-highlight-color:transparent}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
-a.link{color:var(--cyan);text-decoration:none}
+a.link{color:var(--cyan);text-decoration:none;display:inline-flex;align-items:center;min-height:44px}
 .mono{font-family:var(--mono)}
 .bull{color:var(--green)} .bear{color:var(--red)} .warn{color:var(--yellow)} .neutral{color:var(--text2)}
 
