@@ -97,76 +97,79 @@ export function buildPulse(pulse) {
 //  CIM v6 — CARD BUILDERS
 // ══════════════════════════════════════════════════════════════════
 
-const VERDICT_UI = { GRID_NOW: ['GRID NOW', 'green'], DEVELOPING: ['DEVELOPING', 'yellow'], WAIT: ['WAIT', 'red'], BLOCKED: ['BLOCKED', 'red'] };
+const VERDICT = { GRID_NOW: ['Grid now', 'green'], DEVELOPING: ['Developing', 'yellow'], WAIT: ['Wait', 'dim'], BLOCKED: ['Blocked', 'red'] };
+const pct = (x, d = 2) => (x * 100).toFixed(d);
+const tr  = (k, v, cls = '') => `<tr><td>${k}</td><td class="${cls}">${v}</td></tr>`;
+const gridScoreCls = s => s >= GRID_CONFIG.VERDICT.NOW ? 'bull' : s >= GRID_CONFIG.VERDICT.DEVELOPING ? 'warn' : 'bear';
 
-export function buildGridCard(name, m, prov = '?', mode = 'spot') {
-  const v = m?.gridVerdicts?.[mode], p = m?.gridPlans?.[mode];
-  if (!v || !p) return '';
-  const [vLabel, vCls] = VERDICT_UI[v.verdict];
-  const tier = v.verdict === 'GRID_NOW' ? ['sr-high', 'card-grid-ok'] : v.verdict === 'DEVELOPING' ? ['sr-mid', 'card-grid-warn'] : ['sr-low', 'card-grid-bad'];
-  const tvEx = prov === 'Bybit' ? 'BYBIT' : 'BINANCE';
-  return `
-<div class="asset-card ${tier[1]}" data-name="${name}" data-type="grid">
-  <div class="card-header">
-    <div>
-      <div class="card-ticker"><a href="https://www.tradingview.com/chart/?symbol=${tvEx}%3A${name}USDT.P" target="_blank" rel="noopener" class="tv-link" onclick="event.stopPropagation()">${name}</a></div>
-      <div class="card-price">$${fmtPrice(m.price)}</div>
-    </div>
-    <div class="card-meta">
-      <span class="badge-sm ${vCls}">${vLabel}</span>
-      <span class="score-ring ${tier[0]}">${v.score.toFixed(1)}</span>
-    </div>
-  </div>
-  <div class="indicator-row">
-    <span class="ind-pill p-purple">$${fmtPrice(p.lower)}–$${fmtPrice(p.upper)}</span>
-    <span class="ind-pill p-neutral">${p.count} grids · ${(p.profit.min * 100).toFixed(2)}–${(p.profit.max * 100).toFixed(2)}%</span>
-    <span class="ind-pill p-neutral">~${p.daysInRange.toFixed(1)}d in range</span>
-  </div>
-  ${v.verdict === 'BLOCKED' ? `<div class="card-block-reason">${v.reason}</div>` : ''}
-</div>`;
+export function buildGridRow(name, m, mode) {
+  const v = m.gridVerdicts[mode], p = m.gridPlans[mode];
+  const [label, cls] = VERDICT[v.verdict];
+  return `<button class="row${v.verdict === 'BLOCKED' ? ' is-blocked' : ''}" data-open="grid:${name}">
+  <span class="row-top">
+    <span class="row-name">${name}</span><span class="row-price">$${fmtPrice(m.price)}</span>
+    <span class="row-right"><span class="badge ${cls}">${label}</span><span class="score ${gridScoreCls(v.score)}">${v.score.toFixed(1)}</span></span>
+  </span>
+  <span class="row-stats">
+    <span>Range <b>${p.widthPct.toFixed(1)}%</b></span>
+    <span>Per grid <b>${pct(p.profit.min)}–${pct(p.profit.max)}%</b></span>
+    <span>In range <b>~${p.daysInRange.toFixed(1)}d</b></span>
+    ${mode === 'futures' ? `<span><b>${p.side}</b> ${p.leverage}×</span>` : ''}
+  </span>
+  ${v.verdict === 'BLOCKED' ? `<span class="row-reason">${v.reason}</span>` : ''}
+</button>`;
 }
 
-export function buildGridCards(allMetrics, symProvider = {}, mode = 'spot') {
-  const entries = Object.entries(allMetrics).filter(([, m]) => m?.gridVerdicts)
+export function buildGridList(allMetrics, mode) {
+  const entries = Object.entries(allMetrics).filter(([, m]) => m?.gridVerdicts?.[mode])
     .map(([name, m]) => ({ name, m, verdict: m.gridVerdicts[mode] }));
-  return sortGridEntries(entries).map(e => buildGridCard(e.name, e.m, symProvider[e.name] || '?', mode)).join('')
-    || '<div class="asset-card"><span class="neutral">No data yet.</span></div>';
+  return sortGridEntries(entries).map(e => buildGridRow(e.name, e.m, mode)).join('')
+    || '<p class="sheet-note">No data yet.</p>';
 }
 
-function planTable(p, v) {
-  const r = p.risk;
-  const risk = p.mode === 'spot'
-    ? `<tr><td>Loss at stop</td><td class="bear">−$${fmt(r.lossAtSL, 0)} (${(r.lossPct * 100).toFixed(1)}%)</td></tr>
-       <tr><td>Break-even</td><td>$${fmtPrice(r.breakEven)}</td></tr>`
-    : ['down', 'up'].filter(k => r[k]).map(k =>
-        `<tr><td>Est. liquidation ${k === 'down' ? '↓' : '↑'}</td><td class="${r[k].liqBeforeStop ? 'bear' : ''}">$${fmtPrice(r[k].liq)}${r[k].liqBeforeStop ? ' ⚠ before stop' : ''}</td></tr>`).join('');
-  return `<table class="sheet-table">
-  <tr><td>Verdict</td><td>${v.verdict.replace('_', ' ')} · ${v.score.toFixed(1)}/10</td></tr>
-  ${v.reason ? `<tr><td>Note</td><td class="warn">${v.reason}</td></tr>` : ''}
-  <tr><td>Lower</td><td>${fmtPrice(p.lower)}</td></tr>
-  <tr><td>Upper</td><td>${fmtPrice(p.upper)}</td></tr>
-  <tr><td>Grids</td><td>${p.count} · ${p.geometric ? 'Geometric' : 'Arithmetic'}</td></tr>
-  ${p.mode === 'futures' ? `<tr><td>Direction</td><td>${p.side} · ${p.leverage}×</td></tr>` : ''}
-  <tr><td>Investment</td><td>$${fmt(p.capital, 0)}</td></tr>
-  <tr><td>Stop loss</td><td class="bear">${fmtPrice(p.sl)}</td></tr>
-  <tr><td>Take profit</td><td class="bull">${fmtPrice(p.tp)}</td></tr>
-  <tr><td>Profit / grid</td><td>${(p.profit.min * 100).toFixed(2)}–${(p.profit.max * 100).toFixed(2)}% net</td></tr>
-  <tr><td>Days in range</td><td>~${p.daysInRange.toFixed(1)}</td></tr>
-  ${risk}
-</table>`;
-}
+const copyField = (label, shown, raw) =>
+  `<button class="copy-field" data-copy="${raw}" data-label="${label}"><span class="cf-label">${label}</span><span class="cf-val">${shown}</span></button>`;
 
-export function buildGridSheet(name, m) {
-  if (!m?.gridPlans) return '<p class="sheet-note">No data available.</p>';
-  const v = m.gridVerdicts.spot;
-  const comps = v.components.map(c =>
-    `<tr><td>${c.label}</td><td>${c.score.toFixed(1)} / ${c.max.toFixed(1)}<br><span class="neutral" style="font-size:.7rem">${c.detail}</span></td></tr>`).join('');
-  const recs = v.recs.map(r => `<div class="warn" style="font-size:.75rem;margin-top:4px">→ ${r}</div>`).join('');
+export function buildGridSheet(name, m, mode, provider) {
+  const v = m.gridVerdicts[mode], p = m.gridPlans[mode], r = p.risk;
+  const modeName = p.geometric ? 'Geometric' : 'Arithmetic';
+  const fields = [
+    copyField('Lower', fmtPrice(p.lower), fmtPrice(p.lower)),
+    copyField('Upper', fmtPrice(p.upper), fmtPrice(p.upper)),
+    copyField('Grids', p.count, p.count),
+    copyField('Mode', modeName, modeName),
+    mode === 'futures' ? copyField('Direction', p.side, p.side) + copyField('Leverage', `${p.leverage}×`, p.leverage) : '',
+    copyField('Investment', `$${fmt(p.capital, 0)}`, p.capital),
+    copyField('Stop loss', fmtPrice(p.sl), fmtPrice(p.sl)),
+    copyField('Take profit', fmtPrice(p.tp), fmtPrice(p.tp)),
+  ].join('');
+  const legs = ['down', 'up'].filter(k => r[k]);
+  const riskRows = mode === 'spot'
+    ? tr('Loss at stop', `−$${fmt(r.lossAtSL, 0)} (${pct(r.lossPct, 1)}%)`, 'bear') + tr('Break-even', `$${fmtPrice(r.breakEven)}`)
+    : legs.map(k => tr(`Est. liquidation ${k === 'down' ? '↓' : '↑'}`, `$${fmtPrice(r[k].liq)}${r[k].liqBeforeStop ? ' — before stop!' : ''}`, r[k].liqBeforeStop ? 'bear' : '')
+                  + tr(`Loss at stop ${k === 'down' ? '↓' : '↑'}`, `−$${fmt(r[k].lossAtStop, 0)}`, 'bear')).join('');
+  const danger = mode === 'futures' && legs.some(k => r[k].liqBeforeStop);
+  const note = v.verdict === 'BLOCKED' ? `<span class="row-reason">${v.blocks.join(' · ')}</span>`
+             : v.reason ? `<span class="sheet-note warn">${v.reason}</span>` : '';
+  const [label, cls] = VERDICT[v.verdict];
   return `
-<div class="sheet-section-label">Spot Grid</div>${planTable(m.gridPlans.spot, m.gridVerdicts.spot)}
-<div class="sheet-section-label">Futures Grid</div>${planTable(m.gridPlans.futures, m.gridVerdicts.futures)}
-<div class="sheet-section-label">Why this score</div><table class="sheet-table">${comps}</table>${recs}
-${buildRegimeBlock(m, { includeSqueezeConf: true })}`;
+<p class="sheet-note"><span class="badge ${cls}">${label}</span> <span class="mono">${v.score.toFixed(1)} / 10</span></p>
+${note}
+<div class="sheet-section-label">Pionex parameters · tap to copy</div>
+<div class="fields">${fields}</div>
+<div class="risk${danger ? ' danger' : ''}"><table class="sheet-table">
+  ${tr('Profit / grid (net)', `${pct(p.profit.min)}–${pct(p.profit.max)}%`)}
+  ${tr('Expected days in range', `~${p.daysInRange.toFixed(1)}`)}
+  ${riskRows}
+</table>
+${mode === 'futures' ? `<span class="sheet-note">Liquidation is an estimate (isolated margin, ${GRID_CONFIG.MMR * 100}% maintenance). Confirm Pionex's figure before creating.</span>` : ''}
+</div>
+<details class="fold"><summary>Why ${v.score.toFixed(1)} / 10</summary>
+  ${v.components.map(c => `<span class="comp"><span class="comp-top"><span>${c.label}</span><span class="mono">${c.score.toFixed(1)} / ${c.max.toFixed(1)}</span></span><span class="bar"><i style="width:${Math.round(c.score / c.max * 100)}%"></i></span><span class="sub">${c.detail}</span></span>`).join('')}
+  ${v.recs.map(t => `<p class="rec">${t}</p>`).join('')}
+</details>
+<details class="fold"><summary>Regime &amp; indicators</summary>${buildRegimeBlock(m, { includeSqueezeConf: true })}</details>
+<p class="sheet-note"><a class="link" href="https://www.tradingview.com/chart/?symbol=${provider === 'Bybit' ? 'BYBIT' : 'BINANCE'}%3A${name}USDT.P" target="_blank" rel="noopener">Open ${name} chart ↗</a></p>`;
 }
 
 // ── Direction card (collapsed) ────────────────────────────
@@ -285,6 +288,5 @@ ${buildRegimeBlock(m, { includeSqueezeConf: false })}`;
 }
 
 // ── Transitional adapters (replaced in Tasks 12–13) ──
-export const buildGridList   = (all, mode) => buildGridCards(all, {}, mode);
 export const buildSignalList = (all, scores, recs) => buildDirectionCards(all, scores, recs, {});
 export const buildSignalSheet = (name, m, sc, rec) => buildDirectionSheet(name, m, sc?.score ?? 0, sc?.direction ?? null, sc?.detail ?? [], rec);
