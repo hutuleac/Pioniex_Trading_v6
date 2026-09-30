@@ -172,121 +172,51 @@ ${mode === 'futures' ? `<span class="sheet-note">Liquidation is an estimate (iso
 <p class="sheet-note"><a class="link" href="https://www.tradingview.com/chart/?symbol=${provider === 'Bybit' ? 'BYBIT' : 'BINANCE'}%3A${name}USDT.P" target="_blank" rel="noopener">Open ${name} chart ↗</a></p>`;
 }
 
-// ── Direction card (collapsed) ────────────────────────────
-export function buildDirectionCard(name, m, prov = '?', score = 0, direction = null, rec = null) {
-  if (!m) return '';
+const dirScoreCls = s => s >= CFG.SCORE_ACTIVE ? 'bull' : s >= 6 ? 'warn' : 'bear';
 
-  // Score ring class
-  const srCls = score >= CFG.SCORE_ACTIVE ? 'sr-high' : score >= 6 ? 'sr-mid' : 'sr-low';
-
-  // Rec badge
-  const recLabel = rec?.rec ?? 'No bias';
-  const recText  = direction ? `${direction} · ${recLabel}` : recLabel;
-  const recCls   = { bull: 'green', warn: 'yellow', bear: 'red' }[rec?.recClass] ?? 'red';
-  const recBadge = `<span class="badge-sm ${recCls}">${recText}</span>`;
-
-  // Card border class
-  const cardCls = direction === 'LONG' ? 'card-bull'
-                : direction === 'SHORT' ? 'card-bear'
-                : 'card-avoid';
-
-  // Pill 1: Macro Trend
-  const isBull = direction === 'LONG';
-  const isBear = direction === 'SHORT';
-  const macroLabel = isBull ? 'Macro Bull' : isBear ? 'Macro Bear' : 'Neutral';
-  const macroCls   = isBull ? 'p-bull' : isBear ? 'p-bear' : 'p-neutral';
-  const macroFull  = score >= CFG.SCORE_ACTIVE;
-  const macroPill  = `<span class="ind-pill ${macroCls}">${macroLabel}${macroFull ? ' ✓' : ''}</span>`;
-
-  // Pill 2: RSI
-  const rsi = m.rsi ?? 0;
-  const rsiCls = rsi < 30 ? 'p-bull' : rsi > 70 ? 'p-bear' : rsi > 65 ? 'p-warn' : 'p-neutral';
-  const rsiWarn = rsi > 70 || rsi < 30 ? ' ⚠' : '';
-  const rsiPill = `<span class="ind-pill ${rsiCls}">RSI ${rsi.toFixed(0)}${rsiWarn}</span>`;
-
-  // Pill 3: Flow / Pressure
-  const flow = m.flow ?? 0;
-  const flowCls = flow > CFG.FLOW_STRONG ? 'p-bull'
-                : flow < -CFG.FLOW_STRONG ? 'p-bear'
-                : flow > CFG.FLOW_PARTIAL ? 'p-warn'
-                : 'p-neutral';
-  const flowLabel = flow > CFG.FLOW_STRONG ? 'Buy Pressure'
-                  : flow < -CFG.FLOW_STRONG ? 'Sell Pressure'
-                  : flow > CFG.FLOW_PARTIAL ? 'Mild Buy'
-                  : flow < -CFG.FLOW_PARTIAL ? 'Mild Sell'
-                  : 'No Pressure';
-  const flowPill = `<span class="ind-pill ${flowCls}">${flowLabel}</span>`;
-
-  // Pill 4: Structure
-  const s4h  = m.structure4h  ?? '—';
-  const s30d = m.structure30d ?? '—';
-  const strMatch = s4h === s30d;
-  const strBull  = s4h === 'Bullish' && s30d === 'Bullish';
-  const strBear  = s4h === 'Bearish' && s30d === 'Bearish';
-  const strCls   = strBull ? 'p-bull' : strBear ? 'p-bear' : !strMatch ? 'p-warn' : 'p-neutral';
-  const strPill  = `<span class="ind-pill ${strCls}">${s4h.slice(0,4)} / ${s30d.slice(0,4)}</span>`;
-
-  // TradingView link
-  const tvExDir  = prov === 'Bybit' ? 'BYBIT' : 'BINANCE';
-  const tvLinkDir = `<a href="https://www.tradingview.com/chart/?symbol=${tvExDir}%3A${name}USDT.P" target="_blank" rel="noopener" class="tv-link" onclick="event.stopPropagation()">${name}</a>`;
-
-  return `
-<div class="asset-card ${cardCls}" data-name="${name}" data-type="direction">
-  <div class="card-header">
-    <div>
-      <div class="card-ticker">${tvLinkDir}</div>
-      <div class="card-price">$${fmt(m.price,2)}</div>
-    </div>
-    <div class="card-meta">
-      ${recBadge}
-      <span class="score-ring ${srCls}">${score.toFixed(1)}</span>
-    </div>
-  </div>
-  <div class="indicator-row">
-    ${macroPill}${rsiPill}${flowPill}${strPill}
-  </div>
-</div>`;
+export function buildSignalRow(name, m, sc, rec) {
+  const dir = sc?.direction ?? null, score = sc?.score ?? 0;
+  const dirCls = dir === 'LONG' ? 'green' : dir === 'SHORT' ? 'red' : 'dim';
+  return `<button class="row" data-open="signal:${name}">
+  <span class="row-top">
+    <span class="row-name">${name}</span><span class="row-price">$${fmtPrice(m.price)}</span>
+    <span class="row-right"><span class="badge ${dirCls}">${dir ?? 'No bias'}</span><span class="score ${dirScoreCls(score)}">${score.toFixed(1)}</span></span>
+  </span>
+  <span class="row-stats">
+    <span>Regime <b>${(m.regime ?? 'MIXED').replace('_', ' ')}</b></span>
+    <span>RSI <b>${m.rsi.toFixed(0)}</b></span>
+    <span>${rec?.rec ?? ''}</span>
+  </span>
+</button>`;
 }
 
-// ── Direction cards wrapper ───────────────────────────────
-export function buildDirectionCards(allMetrics, allScores = {}, allRecs = {}, symProvider = {}) {
-  return Object.entries(allMetrics)
-    .filter(([, m]) => m != null)
-    .sort((a, b) => (allScores[b[0]]?.score ?? 0) - (allScores[a[0]]?.score ?? 0))
-    .map(([name, m]) => buildDirectionCard(
-      name, m,
-      symProvider[name] || '?',
-      allScores[name]?.score ?? 0,
-      allScores[name]?.direction ?? null,
-      allRecs[name] ?? null
-    ))
-    .join('') || '<div class="asset-card"><span style="color:#555;font-size:.7rem">No data yet.</span></div>';
+export function buildSignalList(allMetrics, scores, recs) {
+  return Object.entries(allMetrics).filter(([, m]) => m)
+    .sort((a, b) => (scores[b[0]]?.score ?? 0) - (scores[a[0]]?.score ?? 0))
+    .map(([name, m]) => buildSignalRow(name, m, scores[name], recs[name])).join('')
+    || '<p class="sheet-note">No data yet.</p>';
 }
 
-// ── Direction bottom sheet ────────────────────────────────
-export function buildDirectionSheet(name, m, score = 0, direction = null, detail = [], rec = null) {
-  if (!m) return '<p class="sheet-note">No data available.</p>';
-  const price = m.price ?? 0;
-  const side  = ref => ref == null ? '—' : price > ref ? '<span class="bull">Above</span>' : '<span class="bear">Below</span>';
-  const cvd   = v => v > 0 ? '<span class="bull">ACC</span>' : v < 0 ? '<span class="bear">DIS</span>' : '—';
-  const rows  = detail.map(([c, v, why]) =>
-    `<tr><td>${c}<br><span class="neutral" style="font-size:.7rem">${why}</span></td><td class="${v > 0 ? 'bull' : v < 0 ? 'bear' : 'neutral'}">${v > 0 ? '+' : ''}${v.toFixed(2)}</td></tr>`).join('');
-  const blockers = (rec?.blockers ?? []).map(b => `<div class="warn" style="font-size:.75rem;margin-top:3px">⚠ ${b}</div>`).join('');
+export function buildSignalSheet(name, m, sc, rec) {
+  const detail = sc?.detail ?? [], price = m.price;
+  const side = ref => ref == null ? '—' : price > ref ? '<span class="bull">Above</span>' : '<span class="bear">Below</span>';
+  const cvd  = v => v > 0 ? '<span class="bull">ACC</span>' : v < 0 ? '<span class="bear">DIS</span>' : '—';
+  const rows = detail.map(([c, val, why]) =>
+    tr(`${c}<span class="sub">${why}</span>`, `${val > 0 ? '+' : ''}${val.toFixed(2)}`, val > 0 ? 'bull' : val < 0 ? 'bear' : 'neutral')).join('');
   return `
-<div class="sheet-section-label">Score breakdown · ${score.toFixed(1)} / 10 · ${direction ?? 'No bias'}</div>
+<p class="sheet-note"><span class="badge ${sc?.direction === 'LONG' ? 'green' : sc?.direction === 'SHORT' ? 'red' : 'dim'}">${sc?.direction ?? 'No bias'}</span>
+  <span class="mono">${(sc?.score ?? 0).toFixed(1)} / 10</span> · ${rec?.rec ?? ''}</p>
+${(rec?.blockers ?? []).map(b => `<p class="rec">${b}</p>`).join('')}
+<div class="sheet-section-label">Score breakdown</div>
 <table class="sheet-table">${rows}</table>
-${blockers}
 <div class="sheet-section-label">Trend</div>
 <table class="sheet-table">
-  <tr><td>Structure 4H / 30d</td><td>${m.structure4h} / ${m.structure30d}</td></tr>
-  <tr><td>AVWAP 5d / 14d / 30d</td><td>${side(m.avwap5d)} / ${side(m.avwap14d)} / ${side(m.avwap30d)}</td></tr>
-  <tr><td>CVD 5d / 14d / 30d</td><td>${cvd(m.cvd5d)} / ${cvd(m.cvd14d)} / ${cvd(m.cvd30d)}</td></tr>
-  <tr><td>RSI 4H</td><td>${m.rsi?.toFixed(1) ?? '—'}</td></tr>
-  <tr><td>OI 7d</td><td>${m.oiChange != null ? m.oiChange.toFixed(1) + '%' : '—'}</td></tr>
+  ${tr('Structure 4H / 30d', `${m.structure4h} / ${m.structure30d}`)}
+  ${tr('AVWAP 5d / 14d / 30d', `${side(m.avwap5d)} / ${side(m.avwap14d)} / ${side(m.avwap30d)}`)}
+  ${tr('CVD 5d / 14d / 30d', `${cvd(m.cvd5d)} / ${cvd(m.cvd14d)} / ${cvd(m.cvd30d)}`)}
+  ${tr('RSI 4H', m.rsi.toFixed(1))}
+  ${tr('Funding', `${(m.funding ?? 0).toFixed(4)}%`)}
+  ${tr('OI 7d', `${m.oiChange >= 0 ? '+' : ''}${(m.oiChange ?? 0).toFixed(1)}%`)}
 </table>
-${buildRegimeBlock(m, { includeSqueezeConf: false })}`;
+<details class="fold"><summary>Regime &amp; indicators</summary>${buildRegimeBlock(m)}</details>`;
 }
-
-// ── Transitional adapters (replaced in Tasks 12–13) ──
-export const buildSignalList = (all, scores, recs) => buildDirectionCards(all, scores, recs, {});
-export const buildSignalSheet = (name, m, sc, rec) => buildDirectionSheet(name, m, sc?.score ?? 0, sc?.direction ?? null, sc?.detail ?? [], rec);

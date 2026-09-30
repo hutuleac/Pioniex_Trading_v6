@@ -297,6 +297,16 @@ await test('grid sheet has copyable Pionex fields in form order', () => {
   assert.ok(!/NaN|undefined/.test(html));
 });
 
+// ── Task 13: signals UI ──
+await test('signal rows open sheets; sheet renders every score detail row', () => {
+  const sc = { score: 6.2, direction: 'LONG', detail: [['Trend Macro BULL (full)', 2, '3/4'], ['RSI overbought vs LONG', -0.5, 'RSI=78']] };
+  const list = U.buildSignalList({ BTC: gridM }, { BTC: sc }, { BTC: { rec: 'Developing', blockers: [] } });
+  assert.match(list, /data-open="signal:BTC"/);
+  const sheet = U.buildSignalSheet('BTC', gridM, sc, { rec: 'Developing', blockers: ['RSI 78.0 overbought vs LONG'] });
+  assert.match(sheet, /Trend Macro BULL \(full\)/); assert.match(sheet, /\+2\.00/); assert.match(sheet, /−0\.50|-0\.50/);
+  assert.ok(!/NaN|undefined/.test(sheet));
+});
+
 // ── summary ──
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exitCode = fail ? 1 : 0;

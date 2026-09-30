@@ -190,8 +190,6 @@ document.addEventListener('click', async e => {
   if (seg) return setMode(seg.dataset.mode);
   const row = e.target.closest('[data-open]');
   if (row) { const [type, name] = row.dataset.open.split(':'); return openSheet(type, name); }
-  const legacy = e.target.closest('.asset-card[data-name]');          // transitional — removed in Task 13
-  if (legacy && !e.target.closest('a')) return openSheet(legacy.dataset.type === 'grid' ? 'grid' : 'signal', legacy.dataset.name);
 });
 $('refresh-btn').addEventListener('click', fetchAndDisplay);
 $('sheet-backdrop').addEventListener('click', closeSheet);
