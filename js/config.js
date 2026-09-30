@@ -79,9 +79,14 @@ export const LEGENDS = [
 // ══════════════════════════════════════════════════════════════════
 export const GRID_CONFIG = {
   DEFAULT_CAPITAL        : 500,
-  FEE_PCT                : 0.001,  // 0.1% per side, 0.2% round-trip per grid
-  TARGET_NET_PCT         : 0.008,  // target net profit per grid (0.8%)
-  MIN_NET_PCT            : 0.006,  // minimum viable net profit per grid
+  FEE_PCT                : 0.001,  // legacy path only (removed in Task 9)
+  FEES                   : { spot: 0.0005, futures: 0.0005 },  // per side. Pionex spot 0.05% (published); futures unverified
+  DEFAULT_LEVERAGE       : 3,
+  MMR                    : 0.005,  // maintenance margin rate used for the liquidation estimate
+  GRID_LIMITS            : { spot: [2, 150], futures: [2, 500] },  // futures from Pionex FAQ; spot unverified
+  STOP_ATR_MULT          : 2.0,    // grid SL/TP sit this many 4H ATRs beyond the range
+  TARGET_NET_PCT         : 0.005,  // grid count targets ≥0.5% net on the WORST step
+  MIN_NET_PCT            : 0.003,  // below this worst-step net profit the plan is blocked
   ATR_MULTIPLIER_DEFAULT : 2.5,
   GEOMETRIC_THRESHOLD_PCT: 20,     // use Geometric mode if range > 20%
 
@@ -114,9 +119,25 @@ export const GRID_CONFIG = {
   },
 };
 
-export function getGridCapital() {
-  return parseFloat(localStorage.getItem('gridCapital') || GRID_CONFIG.DEFAULT_CAPITAL);
+// ── User settings (localStorage, private-mode safe) ───────────────
+const SETTINGS_KEY = 'cim_settings';
+export function getSettings() {
+  let s = {}, legacyCap = NaN;
+  try { s = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch {}
+  try { legacyCap = parseFloat(localStorage.getItem('gridCapital')); } catch {}
+  const num = (v, d) => (Number.isFinite(+v) && +v > 0 ? +v : d);
+  return {
+    capital:    num(s.capital, num(legacyCap, GRID_CONFIG.DEFAULT_CAPITAL)),
+    leverage:   num(s.leverage, GRID_CONFIG.DEFAULT_LEVERAGE),
+    feeSpot:    num(s.feeSpot, GRID_CONFIG.FEES.spot),
+    feeFutures: num(s.feeFutures, GRID_CONFIG.FEES.futures),
+    mode:       s.mode === 'futures' ? 'futures' : 'spot',
+  };
 }
-export function setGridCapital(val) {
-  localStorage.setItem('gridCapital', String(val));
+export function setSettings(patch) {
+  const next = { ...getSettings(), ...patch };
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); } catch {}
+  return next;
 }
+export const getGridCapital = () => getSettings().capital;
+export const setGridCapital = v => setSettings({ capital: +v });

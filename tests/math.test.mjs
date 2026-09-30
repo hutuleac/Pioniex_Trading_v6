@@ -163,6 +163,73 @@ await test('calcRecommendation: no direction → No bias', () => {
 });
 await test('calcBotParams removed', () => assert.equal(I.calcBotParams, undefined));
 
+// ── Task 8: grid engine ──
+await test('grid levels: arithmetic and geometric', () => {
+  assert.deepEqual(G.gridLevels(90, 110, 2, false), [90, 100, 110]);
+  G.gridLevels(100, 400, 2, true).forEach((v, i) => near(v, [100, 200, 400][i], 1e-9));
+});
+await test('profit/grid is a min–max range net of both fees', () => {
+  const p = G.profitPerGrid([90, 100, 110], 0);
+  near(p.max, 0.1111, 1e-4); near(p.min, 0.1, 1e-9);
+  const g = G.profitPerGrid([100, 110, 121], 0.0005);
+  near(g.min, 0.099, 1e-9); near(g.max, 0.099, 1e-9);
+});
+await test('grid count = largest n keeping min net ≥ target', () => {
+  assert.equal(G.recommendGridCount(100, 110, false, 0.0005, 0.005, [2, 500]), 15);
+  assert.equal(G.recommendGridCount(100, 100.5, false, 0.0005, 0.005, [2, 500]), 2);   // impossible → floor
+});
+await test('spot risk walks real grid fills down to the stop', () => {
+  const r = G.spotRisk([90, 100, 110], 105, 200, 80);
+  near(r.coins, 2.11111, 1e-4); near(r.lossAtSL, 31.111, 1e-2); near(r.breakEven, 94.737, 1e-2);
+});
+await test('futures long liquidation estimate + before-stop flag', () => {
+  const r3 = G.futuresRisk([90, 100, 110], 105, 100, 3, 'Long', 0.005, 85, 120);
+  near(r3.down.liq, 63.475, 1e-2); assert.equal(r3.down.liqBeforeStop, false); assert.equal(r3.up, null);
+  const r10 = G.futuresRisk([90, 100, 110], 105, 100, 10, 'Long', 0.005, 85, 120);
+  near(r10.down.liq, 85.69, 1e-2); assert.equal(r10.down.liqBeforeStop, true);
+});
+await test('futures short liquidation sits above the fills', () => {
+  const r = G.futuresRisk([90, 100, 110], 95, 100, 3, 'Short', 0.005, 80, 115);
+  near(r.up.liq, 138.99, 1e-1); assert.equal(r.up.liqBeforeStop, false); assert.equal(r.down, null);
+});
+await test('expected days in range (random-walk first exit)', () => {
+  near(G.expectedDaysInRange(90, 110, 100, 5), 4, 1e-9);
+});
+await test('extreme volatility never produces a negative lower bound', () => {
+  const r = G.calcRange(1, 30, 3.5, 'Long');
+  assert.ok(r.lower > 0 && r.upper > r.lower, JSON.stringify(r));
+});
+await test('futures side follows bias, not quality', () => {
+  assert.equal(G.selectFuturesSide({ structure30d: 'Bullish', adx: { adx: 10 } }, 'LONG'), 'Long');
+  assert.equal(G.selectFuturesSide({ structure30d: 'Neutral', adx: { adx: 10 } }, 'LONG'), 'Neutral');
+  assert.equal(G.selectFuturesSide({ structure30d: 'Bearish', adx: { adx: 30 } }, 'SHORT'), 'Neutral');
+});
+await test('calcGridPlan on fixture: coherent spot + futures plans', () => {
+  const m = I.computeMetrics(btc.k4.slice(-499), btc.k1, { oiNow: 1, oiChange: 0 });
+  m.price = m.currClose;
+  const prof = G.getTickerGridProfile('BTC');
+  const s = { capital: 500, leverage: 3, feeSpot: 0.0005, feeFutures: 0.0005 };
+  const spot = G.calcGridPlan(m, prof, null, { ...s, mode: 'spot' });
+  assert.ok(spot.lower < m.price && m.price < spot.upper);
+  assert.ok(spot.count >= 2 && spot.count <= 150 && spot.levels.length === spot.count + 1);
+  assert.ok(spot.sl < spot.lower && spot.tp > spot.upper && spot.sl > 0);
+  const fut = G.calcGridPlan({ ...m, structure30d: 'Bearish', adx: { adx: 5 } }, prof, 'SHORT', { ...s, mode: 'futures' });
+  assert.equal(fut.side, 'Short'); assert.ok(fut.sl > fut.upper && fut.tp < fut.lower);
+});
+await test('getSettings falls back to defaults on corrupt storage', () => {
+  localStorage.setItem('cim_settings', '{bad json');
+  const s = C.getSettings();
+  assert.equal(s.capital, C.GRID_CONFIG.DEFAULT_CAPITAL);
+  assert.equal(s.leverage, 3); assert.equal(s.mode, 'spot');
+  localStorage.removeItem('cim_settings');
+});
+await test('setSettings round-trips and keeps other keys', () => {
+  C.setSettings({ leverage: 5 }); C.setSettings({ mode: 'futures' });
+  const s = C.getSettings();
+  assert.equal(s.leverage, 5); assert.equal(s.mode, 'futures');
+  localStorage.removeItem('cim_settings');
+});
+
 // ── summary ──
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exitCode = fail ? 1 : 0;
