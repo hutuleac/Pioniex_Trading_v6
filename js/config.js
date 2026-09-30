@@ -33,21 +33,6 @@ export const BYBIT_BASE   = "https://api.bybit.com";
 
 export const BB_INT = { '4h':'240', '1h':'60', '15m':'15', '5m':'5', '1d':'D' };
 
-// ── Static category tooltips for signal cards ─────────────────────
-export const SIG_TIPS = {
-  'Trend Macro':     'Long-term direction (30d context). Checks 4 conditions: price vs AVWAP14d, price vs AVWAP30d, CVD30d positive/negative, Structure30d bullish/bearish. 3 of 4 = full score (+2.0). 2 of 4 = partial (+0.8). This signal sets LONG vs SHORT direction for all other components.',
-  'Trend Swing':     'Short-term momentum (5d context). BULLISH = price > AVWAP5d + CVD5d accumulating + 24h flow positive. BEARISH = opposite. DIV signals = price and CVD disagree — warns of reversal. Adds +1.5 when aligned with Trend Macro, −0.5 when contra.',
-  'Presiune':        'Market pressure — who controls order flow right now. BUY STRONG = positive flow + OI 7d rising + CVD5d ACC (all 3 aligned). SELL STRONG = opposite. SHORT ACTIVE = negative flow but OI rising = new shorts opening. SQUEEZE RISK = positive flow + OI falling = shorts being flushed, potential spike.',
-  'Calitate Trend':  'CVD alignment quality across all 3 horizons (5d / 14d / 30d). FULL ACCUM = all positive = strongest bull confirmation. FULL DISTRIB = all negative = robust bear. BOUNCE/BEAR = recent ACC in macro bear — caution, may not hold. PULLBACK/BULL = recent DIS in macro bull — potential re-entry.',
-  'Setup':           'Entry confluence quality. LONG/SHORT VALID = liquidity sweep (stop hunt) + confirming flow + OI = best setup (+2.0). @ POC5d = price at key volume node + CVD aligned + AVWAP = secondary entry (+1.0). Swing14d = weaker 14d S/R setup (+0.5). WAIT = no active confluence.',
-  'Risc':            'Risk assessment. HIGH = RSI extreme (>70 or <30) AND flow extreme simultaneously — stretched conditions. MEDIUM = 4H vs 30d structure conflict (direction unclear) OR flow + OI both accelerating at once. LOW = no extremes detected, normal conditions.',
-  'Bot Grid':        'Spot grid bot suitability. RECOMMENDED = CVD5d is lateral (low momentum ratio) + no strong directional flow present — sideways market ideal for grids. POSSIBLE = both timeframe structures neutral. AVOID = active directional trend — a trending market will breach the grid range. See Grid Bot Advisor for parameters.',
-  'FVG':             'Fair Value Gap — institutional price imbalance on 4H. Created when 3 consecutive candles leave an unfilled gap. ★ = 4H market structure confirms the gap direction (higher confidence). FILLING = price is currently inside the gap. BULL FVG = acts as support when revisited from above. BEAR FVG = acts as resistance from below.',
-  'EMA Trend':       'EMA50 vs EMA200 on 4H (golden / death cross). BULL = price > EMA50 > EMA200 = confirmed uptrend. BEAR = price < EMA50 < EMA200 = confirmed downtrend. BULL/PULLBACK = golden cross but price dipped below EMA50 — potential re-entry zone. BEAR/BOUNCE = death cross but price above EMA50 — likely temporary recovery.',
-  'Vol Spike':       'Volume spike vs 20-candle average on 4H. BULL SPIKE = ≥2× average + price above AVWAP5d = breakout confirmation. BEAR SPIKE = ≥2× average + price below AVWAP5d = breakdown confirmation. ELEVATED = 1.5–2× average, watch direction. NORMAL = volume unremarkable.',
-};
-
-// ── Indicator glossary entries (reference CFG values directly) ────
 export const LEGENDS = [
   ["RSI (14)",
     `Relative Strength Index on 4H. Measures price momentum. >70 = overbought (price stretched, pullback likely). <30 = oversold (potential bounce zone). Extreme levels >75 or <25 trigger a −0.5 score penalty. 4H RSI carries far more weight than 1H RSI — use for setup timing, not micro-entries.`],
@@ -85,10 +70,6 @@ export const LEGENDS = [
     `Price envelope: 20-period SMA ± 2 standard deviations. Bandwidth (BW%) measures volatility. BW <5% = squeeze (compressed). BW >15% = expanded (volatile). Narrowing bands followed by a DC break = high-probability breakout. Used in Regime classification and Squeeze Conf score.`],
   ["MACD (12/26/9)",
     `Moving Average Convergence Divergence. MACD line = EMA12 − EMA26. Signal = EMA9 of MACD line. Histogram = MACD − Signal. Positive histogram = bullish momentum building. Negative = bearish. Histogram crossing zero = momentum shift. Visible in the deep card diagnostics panel.`],
-  ["OBV (On-Balance Volume)",
-    `Adds full candle volume on up-closes, subtracts on down-closes. Trend UP = buyers consistently absorbing supply = confirms price rises. Trend DOWN = distribution = divergence from rising price is a warning. FLAT = no conviction. Used in deep card alongside price structure.`],
-  ["Fibonacci (50 candles)",
-    `Fibonacci retracement levels (0%, 23.6%, 38.2%, 50%, 61.8%, 78.6%, 100%) calculated from the swing high/low of the last 50 4H candles. Price zone label shows which level range price sits in. 38.2–61.8% = healthy retracement zone in a trend. Above 78.6% = deep retracement, trend may be failing. Visible in the deep card.`],
   [`Score 0–10`,
     `Composite setup quality score. Max components: Trend Macro (+2.0) + Pressure (+2.0) + Setup (+2.0) + Trend Swing (+1.5) + CVD Quality (+1.5) + EMA (±0.25) + FVG (+0.5) + POC Conf (+0.5) + Funding (±0.3 to ±0.5) = ~10.75 → clamped to 10. Penalties: RSI extreme (−0.5), OI squeeze on short (−0.5 to −1.0), Structure conflict (−0.5), DC20 range indecision (−0.25, only when Regime=RANGING), Funding crowded (−0.5). Score ≥ ${CFG.SCORE_BOT_MIN} activates bot parameters. 8–10 = strong. 6–7.9 = developing. <6 = avoid.`],
 ];

@@ -34,6 +34,13 @@ await test('ATR of constant 2-wide bars is 2', () => {
   near(I.calcAtr(Array.from({ length: 30 }, () => bar(100)), 14), 2, 1e-9);
 });
 
+// ── Task 2: dead code removed ──
+await test('dead indicator exports are gone', () => {
+  for (const k of ['interpretSignals', 'calcDirectionConditions', 'calcOBV', 'calcFib', 'calcChange24h'])
+    assert.equal(I[k], undefined, `${k} should be deleted`);
+  assert.equal(C.SIG_TIPS, undefined, 'SIG_TIPS should be deleted');
+});
+
 // ── summary ──
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exitCode = fail ? 1 : 0;

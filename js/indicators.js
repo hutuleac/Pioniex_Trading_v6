@@ -5,8 +5,7 @@ import { fetchKlines, fetchOI } from './api.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  PRIVATE HELPER — shared boolean derivations
-//  Called by both interpretSignals() and calcScore() to eliminate
-//  duplicate condition logic.
+//  Used by calcScore() to centralise derived condition logic.
 // ══════════════════════════════════════════════════════════════════
 function deriveConditions(price, flow, oiChange, poc5d, avwap5d, poc14d, avwap14d, avwap30d,
   cvd5d, cvd14d, cvd30d, structure30d)
@@ -275,9 +274,6 @@ export async function getAdvancedMetrics(name, symbol) {
   const adxData   = calcADX(df4h);
   const macdData  = calcMACD(df4h);
   const bbData    = calcBB(df4h);
-  const obvData   = calcOBV(df4h);
-  const fibData   = calcFib(df4h);
-  const change24h = calcChange24h(dfFl);
   const atrPct    = calcAtrPct(atr, last.Close);
 
   // ── Donchian Channels (regime + squeeze foundation) ──────────────
@@ -294,138 +290,12 @@ export async function getAdvancedMetrics(name, symbol) {
     currClose:last.Close, fvgList,
     emaFast, emaSlow, volSpike, volCurr, volAvg,
     adx: adxData, macd: macdData, bb: bbData, bbBw: bbData.bw,
-    obv: obvData, fib: fibData, change24h, atrPct,
+    atrPct,
     dc20, dc55, dc20Pos, dc55Pos,
   };
   m.regime      = calcRegime(m);
   m.squeezeConf = calcSqueezeConf(m);
   return m;
-}
-
-// ══════════════════════════════════════════════════════════════════
-//  SIGNAL INTERPRETATION
-// ══════════════════════════════════════════════════════════════════
-export function interpretSignals(price, rsi, atr, flow, oiChange,
-  poc5d, avwap5d, poc14d, avwap14d, avwap30d,
-  cvd5d, cvd14d, cvd30d, structure4h, structure30d,
-  sweep, fvgList, emaFast, emaSlow, volSpike, volCurr, volAvg)
-{
-  const { bearMac, bullMac, nPoc5d, nPoc14d, sBull, sBear, dBull, dBear,
-          buyP, selP, shOp, sqR, aAcc, aDis, bnce, corr } =
-    deriveConditions(price, flow, oiChange, poc5d, avwap5d, poc14d, avwap14d, avwap30d,
-      cvd5d, cvd14d, cvd30d, structure30d);
-
-  const S = {};
-  const fvgTag = g => `[FVG ${g.bottom.toFixed(2)}-${g.top.toFixed(2)} ${g.sizePct.toFixed(2)}%]`;
-
-  // 1. TREND MACRO
-  if      (bearMac>=3) S['Trend Macro'] = ["BEAR",    "bear",    "Price below AVWAP 14d/30d + CVD/Structure confirms"];
-  else if (bullMac>=3) S['Trend Macro'] = ["BULL",    "bull",    "Price above AVWAP 14d/30d + CVD/Structure confirms"];
-  else                 S['Trend Macro'] = ["NEUTRAL",  "neutral", "Mixed signals, no clear direction"];
-
-  // 2. TREND SWING
-  const fvgBN = fvgList.filter(g=>g.type==='BULL' && Math.abs(price-g.mid)/price*100<CFG.FVG_NEAR_PCT && price>=g.bottom);
-  const fvgBE = fvgList.filter(g=>g.type==='BEAR' && Math.abs(price-g.mid)/price*100<CFG.FVG_NEAR_PCT && price<=g.top);
-  if      (sBull) S['Trend Swing'] = ["BULLISH",  "bull",    "Price > AVWAP5d + ACC + 24h flow positive"];
-  else if (sBear) S['Trend Swing'] = ["BEARISH",  "bear",    "Price < AVWAP5d + DIS + 24h flow negative"];
-  else if (dBear) S['Trend Swing'] = ["DIV BEAR", "warn",    "Price high but CVD5d distributing — weak rally"];
-  else if (dBull) S['Trend Swing'] = ["DIV BULL", "warn",    "Price low but CVD5d accumulating — reversal potential"];
-  else            S['Trend Swing'] = ["NEUTRAL",  "neutral", "No clear swing signal"];
-
-  // 3. PRESSURE
-  if      (selP) S['Presiune'] = ["SELL STRONG",   "bear",    "24h flow neg + OI 7d falling + CVD5d DIS"];
-  else if (buyP) S['Presiune'] = ["BUY STRONG",    "bull",    "24h flow pos + OI 7d rising + CVD5d ACC"];
-  else if (shOp) S['Presiune'] = ["SHORT ACTIVE",  "warn",    "Neg flow but OI rising — new shorts opening"];
-  else if (sqR)  S['Presiune'] = ["SQUEEZE RISK",  "warn",    "Positive flow + OI 7d falling — short squeeze possible"];
-  else           S['Presiune'] = ["BALANCED",       "neutral", "Buy/sell pressure approximately balanced"];
-
-  // 4. TREND QUALITY (CVD convergence)
-  if      (aDis) S['Calitate Trend'] = ["FULL DISTRIB",    "bear",    "DIS on all 3 horizons — robust 4H bear"];
-  else if (aAcc) S['Calitate Trend'] = ["FULL ACCUM",      "bull",    "ACC on all 3 horizons — robust 4H bull"];
-  else if (bnce) S['Calitate Trend'] = ["BOUNCE/BEAR",     "warn",    "Recent ACC (5d) in macro bear — caution"];
-  else if (corr) S['Calitate Trend'] = ["PULLBACK/BULL",   "warn",    "Recent DIS (5d) in macro bull — entry opportunity"];
-  else           S['Calitate Trend'] = ["MIXED",            "neutral", "CVD inconsistent across horizons"];
-
-  // 5. SETUP
-  if (sweep==="SELL_SWP" && flow>0 && oiChange>0) {
-    const ex = fvgBN.length ? " ★ "+fvgTag(fvgBN[0]) : "";
-    S['Setup'] = ["LONG VALID",    "bull", "Sell sweep 4H + positive 24h flow + OI rising"+ex];
-  } else if (sweep==="BUY_SWP" && flow<0 && oiChange<0) {
-    const ex = fvgBE.length ? " ★ "+fvgTag(fvgBE[0]) : "";
-    S['Setup'] = ["SHORT VALID",   "bear", "Buy sweep 4H + neg 24h flow + OI falling"+ex];
-  } else if (nPoc5d && cvd5d>0 && price>avwap5d && structure4h!=="Bearish" && structure30d!=="Bearish") {
-    const ex = fvgBN.length ? " ★ "+fvgTag(fvgBN[0]) : "";
-    S['Setup'] = ["LONG @ POC5d",  "bull", "At POC5d + ACC + above AVWAP + structure ok"+ex];
-  } else if (nPoc5d && cvd5d<0 && price<avwap5d && structure4h!=="Bullish" && structure30d!=="Bullish") {
-    const ex = fvgBE.length ? " ★ "+fvgTag(fvgBE[0]) : "";
-    S['Setup'] = ["SHORT @ POC5d", "bear", "At POC5d + DIS + below AVWAP + structure ok"+ex];
-  } else if (nPoc14d && structure4h==="Bullish" && !(price<avwap5d && cvd5d<0 && flow<0)) {
-    S['Setup'] = ["LONG SWING14d", "bull", "At POC14d + 4H structure bullish"];
-  } else if (nPoc14d && structure4h==="Bearish" && !(price>avwap5d && cvd5d>0 && flow>0)) {
-    S['Setup'] = ["SHORT SWING14d","bear", "At POC14d + 4H structure bearish"];
-  } else {
-    S['Setup'] = ["WAIT",          "neutral", "No clear entry confluence on 4H"];
-  }
-
-  // 6. RISK
-  if      (rsi>CFG.RSI_OB && flow>CFG.FLOW_STRONG)               S['Risc'] = ["HIGH",   "bear", "RSI 4H overbought + 24h flow extreme"];
-  else if (rsi<CFG.RSI_OS && flow<-CFG.FLOW_STRONG)              S['Risc'] = ["HIGH",   "bear", "RSI 4H oversold + 24h flow extreme"];
-  else if (Math.abs(flow)>CFG.FLOW_STRONG && Math.abs(oiChange)>CFG.OI_SQUEEZE_MED)
-                                                                   S['Risc'] = ["MEDIUM", "warn", "24h flow and 7d OI both accelerating"];
-  else if (structure4h!==structure30d && structure4h!=="Neutral" && structure30d!=="Neutral")
-                                                                   S['Risc'] = ["MEDIUM", "warn", `Str 4H (${structure4h}) vs 30d (${structure30d}) conflict`];
-  else                                                             S['Risc'] = ["LOW",    "bull", "Normal conditions, no 4H extremes"];
-
-  // 7. GRID BOT
-  const gridLo = Math.min(poc5d,poc14d)*(1-CFG.GRID_BUFFER), gridHi = Math.max(poc5d,poc14d)*(1+CFG.GRID_BUFFER);
-  if (Math.abs(cvd5d) < Math.abs(cvd14d)*CFG.CVD_LATERAL_RATIO && Math.abs(flow)<CFG.FLOW_STRONG)
-    S['Bot Grid'] = ["RECOMMENDED","bull", `4H sideways. Zone: ${gridLo.toFixed(2)} – ${gridHi.toFixed(2)}`];
-  else if (structure4h==="Neutral" && structure30d==="Neutral")
-    S['Bot Grid'] = ["POSSIBLE",   "warn", `Neutral structure. Zone: ${gridLo.toFixed(2)} – ${gridHi.toFixed(2)}`];
-  else
-    S['Bot Grid'] = ["AVOID",      "bear", "Active 4H trend detected — grid may be breached"];
-
-  // 8. FVG
-  const inside = fvgList.filter(g => g.bottom<=price && price<=g.top);
-  const near   = fvgList.filter(g => !inside.includes(g) && Math.abs(price-g.mid)/price*100 < 1.0)
-                        .sort((a,b) => Math.abs(a.mid-price)-Math.abs(b.mid-price));
-  if (inside.length) {
-    const g = inside[0];
-    const fp = (g.top-g.bottom)>0 ? (price-g.bottom)/(g.top-g.bottom)*100 : 0;
-    const z  = `${g.bottom.toFixed(2)}–${g.top.toFixed(2)} (${g.sizePct.toFixed(2)}%, filled ${fp.toFixed(1)}%)`;
-    if (g.type==='BULL' && structure4h!=="Bearish") S['FVG'] = ["FILLING BULL ★","bull", "Price INSIDE bull FVG: "+z];
-    else if (g.type==='BULL')                       S['FVG'] = ["FILLING BULL",   "warn", "Inside bull FVG (str not confirming): "+z];
-    else if (g.type==='BEAR' && structure4h!=="Bullish") S['FVG'] = ["FILLING BEAR ★","bear","Price INSIDE bear FVG: "+z];
-    else                                            S['FVG'] = ["FILLING BEAR",   "warn", "Inside bear FVG (str not confirming): "+z];
-  } else if (near.length) {
-    const g = near[0], dp = (Math.abs(price-g.mid)/price*100).toFixed(2);
-    const z = `${g.bottom.toFixed(2)}–${g.top.toFixed(2)} (${g.sizePct.toFixed(2)}%, dist ${dp}%)`;
-    if (g.type==='BULL' && structure4h!=="Bearish") S['FVG'] = ["BULL FVG ★","bull", "Bull gap near: "+z];
-    else if (g.type==='BULL')                       S['FVG'] = ["BULL FVG",   "warn", "Bull gap (4H str not confirming): "+z];
-    else if (g.type==='BEAR' && structure4h!=="Bullish") S['FVG'] = ["BEAR FVG ★","bear","Bear gap near: "+z];
-    else                                            S['FVG'] = ["BEAR FVG",   "warn", "Bear gap (4H str not confirming): "+z];
-  } else if (fvgList.length) {
-    const g = fvgList[0], dp = (Math.abs(price-g.mid)/price*100).toFixed(2);
-    S['FVG'] = [`${g.type} FVG FAR`, "neutral", `Nearest: ${g.bottom.toFixed(2)}-${g.top.toFixed(2)}, dist ${dp}%`];
-  } else {
-    S['FVG'] = ["–", "neutral", "No active FVG on last 100 4H candles"];
-  }
-
-  // 9. EMA TREND
-  if      (emaFast>emaSlow && price>emaFast) S['EMA Trend'] = ["BULL",         "bull",    `Price > EMA50(${emaFast.toFixed(2)}) > EMA200(${emaSlow.toFixed(2)})`];
-  else if (emaFast<emaSlow && price<emaFast) S['EMA Trend'] = ["BEAR",         "bear",    `Price < EMA50(${emaFast.toFixed(2)}) < EMA200(${emaSlow.toFixed(2)})`];
-  else if (emaFast>emaSlow && price<emaFast) S['EMA Trend'] = ["BULL/PULLBACK","warn",    "EMA50>EMA200 but price below EMA50 — pullback?"];
-  else if (emaFast<emaSlow && price>emaFast) S['EMA Trend'] = ["BEAR/BOUNCE",  "warn",    "EMA50<EMA200 but price above EMA50 — dead cat?"];
-  else                                       S['EMA Trend'] = ["NEUTRAL",       "neutral", `EMA50≈EMA200, no clear bias`];
-
-  // 10. VOLUME SPIKE
-  const vr = volAvg > 0 ? volCurr / volAvg : 1;
-  if      (volSpike && price>avwap5d) S['Vol Spike'] = ["BULL SPIKE", "bull",    `Volume ${vr.toFixed(1)}x avg — bullish breakout`];
-  else if (volSpike && price<avwap5d) S['Vol Spike'] = ["BEAR SPIKE", "bear",    `Volume ${vr.toFixed(1)}x avg — bearish breakdown`];
-  else if (vr > 1.5)                  S['Vol Spike'] = ["ELEVATED",   "warn",    `Volume ${vr.toFixed(1)}x avg — watch direction`];
-  else                                S['Vol Spike'] = ["NORMAL",     "neutral", `Volume ${vr.toFixed(1)}x avg`];
-
-  return S;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -620,52 +490,6 @@ export function calcBB(df, period = 20, mult = 2) {
   return { upper, lower, mid, bw, label };
 }
 
-export function calcOBV(df) {
-  if (df.length < 2) return { obv: 0, trend: 'FLAT' };
-  let obv = 0;
-  const obvArr = [0];
-  for (let i = 1; i < df.length; i++) {
-    if (df[i].Close > df[i-1].Close) obv += df[i].Volume;
-    else if (df[i].Close < df[i-1].Close) obv -= df[i].Volume;
-    obvArr.push(obv);
-  }
-  const lookback = Math.min(10, obvArr.length - 1);
-  const obvOld = obvArr[obvArr.length - 1 - lookback];
-  const obvNow = obvArr[obvArr.length - 1];
-  const diffPct = obvOld !== 0 ? Math.abs((obvNow - obvOld) / Math.abs(obvOld)) * 100 : 0;
-  const trend = diffPct < 2 ? 'FLAT' : obvNow > obvOld ? 'UP' : 'DOWN';
-  return { obv: obvNow, trend };
-}
-
-export function calcFib(df, lookback = 50) {
-  const slice = df.slice(-lookback);
-  const swingHigh = Math.max(...slice.map(k => k.High));
-  const swingLow  = Math.min(...slice.map(k => k.Low));
-  const range = swingHigh - swingLow;
-  const fibs = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0];
-  const levels = fibs.map(f => ({ ratio: f, price: swingLow + f * range }));
-  const price = df[df.length - 1].Close;
-  let priceZone = 'Below 0';
-  if (price > levels[levels.length - 1].price) {
-    priceZone = 'Above 786';
-  } else {
-    for (let i = 0; i < levels.length - 1; i++) {
-      if (price >= levels[i].price && price <= levels[i + 1].price) {
-        priceZone = `${Math.round(fibs[i] * 1000)}–${Math.round(fibs[i+1] * 1000)}`;
-        break;
-      }
-    }
-  }
-  return { swingHigh, swingLow, levels, priceZone };
-}
-
-export function calcChange24h(dfFl) {
-  if (!dfFl || dfFl.length < 2) return 0;
-  const firstOpen = dfFl[0].Open;
-  const lastClose = dfFl[dfFl.length - 1].Close;
-  return firstOpen > 0 ? (lastClose - firstOpen) / firstOpen * 100 : 0;
-}
-
 export function calcAtrPct(atr, price) {
   return price > 0 ? atr / price * 100 : 0;
 }
@@ -680,22 +504,6 @@ export function calcRecommendation(score, direction, atrPct, funding, rsi) {
   if (score >= 8)              return { rec: 'Watch ⚠', recClass: 'warn', blockers };
   if (score >= 6)              return { rec: 'Watch',   recClass: 'warn', blockers };
   return                              { rec: 'Avoid',   recClass: 'bear', blockers };
-}
-
-export function calcDirectionConditions(price, emaSlow, structure4h, structure30d, avwap30d, rsi, adx, direction) {
-  if (!direction) return { condsMet: 0, condsTotal: 6, pct: 0, conditions: [] };
-  const isLong = direction === 'LONG';
-  const conditions = [
-    { met: isLong ? price > emaSlow    : price < emaSlow,         longDesc: 'Price > EMA200',         shortDesc: 'Price < EMA200' },
-    { met: isLong ? structure4h === 'Bullish' : structure4h === 'Bearish', longDesc: 'Structure 4H: Bullish',  shortDesc: 'Structure 4H: Bearish' },
-    { met: isLong ? structure30d === 'Bullish': structure30d === 'Bearish',longDesc: 'Structure 30d: Bullish', shortDesc: 'Structure 30d: Bearish' },
-    { met: isLong ? price > avwap30d   : price < avwap30d,         longDesc: 'Price > AVWAP30d',       shortDesc: 'Price < AVWAP30d' },
-    { met: adx > 20,                                               longDesc: `ADX ${adx.toFixed(1)} > 20 (trending)`, shortDesc: `ADX ${adx.toFixed(1)} > 20 (trending)` },
-    { met: isLong ? (rsi >= 30 && rsi <= 65) : (rsi >= 35 && rsi <= 70),
-      longDesc: `RSI ${rsi.toFixed(1)} in zone (30–65)`, shortDesc: `RSI ${rsi.toFixed(1)} in zone (35–70)` },
-  ];
-  const condsMet = conditions.filter(c => c.met).length;
-  return { condsMet, condsTotal: 6, pct: Math.round(condsMet / 6 * 100), conditions };
 }
 
 export function calcBotParams(price, atr, score, direction, poc5d, poc14d, avwap5d, fvgList) {

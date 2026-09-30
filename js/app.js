@@ -6,8 +6,7 @@ import { calcRangeFromATR, calcRecommendedGridCount, calcGridProfitPerGrid,
          assessGridViability, getTickerGridProfile, selectGridDirection,
          estimateGridDuration, calcGridScore } from './grid.js';
 import { fetchPriceFunding, fetchMarketPulse } from './api.js';
-import { getAdvancedMetrics, interpretSignals, calcScore, calcBotParams,
-         calcRecommendation, calcDirectionConditions } from './indicators.js';
+import { getAdvancedMetrics, calcScore, calcBotParams, calcRecommendation } from './indicators.js';
 import { buildMarketPulseStrip,
          buildGridCards, buildGridSheet,
          buildDirectionCards, buildDirectionSheet } from './ui.js';
@@ -28,10 +27,8 @@ let SYMBOLS = (() => {
 })();
 let symProvider  = {};   // name → 'Binance' | 'Bybit'
 let allMetrics   = {};   // module-level: used by incremental add + grid re-render
-let allSignals   = {};
 let allScores    = {};
 let allBots      = {};
-let allDirConds  = {};
 let allRecs      = {};
 let refreshTimer = null, countdownTimer = null, nextRefresh = 0;
 let isLoading    = false;
@@ -113,13 +110,6 @@ async function fetchSingleTicker(name, symbol) {
   symProvider[name] = pf.provider;
   const m = await getAdvancedMetrics(name, symbol);
 
-  const signals = interpretSignals(
-    pf.price, m.rsi, m.atr, m.flow, m.oiChange,
-    m.poc5d, m.avwap5d, m.poc14d, m.avwap14d, m.avwap30d,
-    m.cvd5d, m.cvd14d, m.cvd30d,
-    m.structure4h, m.structure30d, m.sweep, m.fvgList,
-    m.emaFast, m.emaSlow, m.volSpike, m.volCurr, m.volAvg
-  );
   const { score, direction, detail } = calcScore(
     pf.price, m.atr, m.rsi, m.flow, m.oiChange,
     m.poc5d, m.avwap5d, m.poc14d, m.avwap14d, m.avwap30d,
@@ -129,7 +119,6 @@ async function fetchSingleTicker(name, symbol) {
   );
   const bot      = calcBotParams(pf.price, m.atr, score, direction, m.poc5d, m.poc14d, m.avwap5d, m.fvgList);
   const mFull    = { ...m, price: pf.price, funding: pf.funding };
-  const dirConds = calcDirectionConditions(pf.price, m.emaSlow, m.structure4h, m.structure30d, m.avwap30d, m.rsi, m.adx?.adx ?? 0, direction);
   const rec      = calcRecommendation(score, direction, m.atrPct ?? 0, pf.funding, m.rsi);
 
   const gridProfile = getTickerGridProfile(name);
@@ -146,19 +135,17 @@ async function fetchSingleTicker(name, symbol) {
   mFull.gridTP         = calcGridTakeProfit(mFull.gridRange.rangeHigh, gridProfile.profile);
   mFull.gridDuration   = estimateGridDuration(mFull.gridRange.rangeWidthPct, mFull.atrPct ?? 1);
 
-  return { mFull, signals, score, direction, detail, bot, dirConds, rec };
+  return { mFull, score, direction, detail, bot, rec };
 }
 
 // ── Incremental add: fetch one new ticker and re-render cards ─────
 async function addAndRenderTicker(name, symbol) {
   try {
-    const { mFull, signals, score, direction, detail, bot, dirConds, rec } = await fetchSingleTicker(name, symbol);
+    const { mFull, score, direction, detail, bot, rec } = await fetchSingleTicker(name, symbol);
 
     allMetrics[name]  = mFull;
-    allSignals[name]  = { price: mFull.price, signals };
     allScores[name]   = { score, direction, detail };
     allBots[name]     = bot;
-    allDirConds[name] = dirConds;
     allRecs[name]     = rec;
     lastAllMetrics    = allMetrics;
 
@@ -195,10 +182,8 @@ async function fetchAndDisplay() {
 
   // Reset module-level state for full refresh
   Object.keys(allMetrics).forEach(k => delete allMetrics[k]);
-  Object.keys(allSignals).forEach(k => delete allSignals[k]);
   Object.keys(allScores).forEach(k  => delete allScores[k]);
   Object.keys(allBots).forEach(k    => delete allBots[k]);
-  Object.keys(allDirConds).forEach(k => delete allDirConds[k]);
   Object.keys(allRecs).forEach(k    => delete allRecs[k]);
 
   // ── Market Pulse (one-time global fetch, non-blocking) ─────────
@@ -212,17 +197,14 @@ async function fetchAndDisplay() {
 
   for (const [name, symbol] of Object.entries(SYMBOLS)) {
     try {
-      const { mFull, signals, score, direction, detail, bot, dirConds, rec } = await fetchSingleTicker(name, symbol);
+      const { mFull, score, direction, detail, bot, rec } = await fetchSingleTicker(name, symbol);
       allMetrics[name]  = mFull;
-      allSignals[name]  = { price: mFull.price, signals };
       allScores[name]   = { score, direction, detail };
       allBots[name]     = bot;
-      allDirConds[name] = dirConds;
       allRecs[name]     = rec;
     } catch(e) {
       console.error(`[${name}] FATAL:`, e);
       allMetrics[name] = null;
-      allSignals[name] = null;
     }
   }
 
@@ -342,48 +324,6 @@ function toggleGlossary() {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  HEADER TOOLTIP FLOATER
-//  Uses position:fixed to bypass overflow-x:auto clipping on the
-//  main metrics table.
-// ══════════════════════════════════════════════════════════════════
-function initHeaderTooltips() {
-  const floater = document.createElement('div');
-  floater.id = 'th-tip-floater';
-  document.body.appendChild(floater);
-
-  function showFloater(tipEl, anchorEl) {
-    floater.innerHTML = tipEl.innerHTML;
-    floater.style.display = 'block';
-
-    const r  = anchorEl.getBoundingClientRect();
-    const fw = floater.offsetWidth;
-    const fh = floater.offsetHeight;
-    let left = r.left + r.width / 2 - fw / 2;
-    let top  = r.bottom + 6;
-
-    left = Math.max(6, Math.min(left, window.innerWidth - fw - 6));
-    if (top + fh > window.innerHeight - 6) top = r.top - fh - 6;
-
-    floater.style.left = left + 'px';
-    floater.style.top  = top  + 'px';
-  }
-
-  function attachHeaderTips() {
-    document.querySelectorAll('th .tip').forEach(tip => {
-      if (tip._thTipBound) return; // avoid duplicate listeners
-      tip._thTipBound = true;
-      const tiptext = tip.querySelector('.tiptext');
-      if (!tiptext) return;
-      tip.addEventListener('mouseenter', () => showFloater(tiptext, tip));
-      tip.addEventListener('mouseleave', () => { floater.style.display = 'none'; });
-    });
-  }
-
-  attachHeaderTips();
-  window._attachHeaderTips = attachHeaderTips;
-}
-
-// ══════════════════════════════════════════════════════════════════
 //  INIT  — wire up events, render legend, chips, then auto-start fetch
 // ══════════════════════════════════════════════════════════════════
 
@@ -458,7 +398,6 @@ document.getElementById('legend-grid').innerHTML = LEGENDS.map(([n,d]) =>
 ).join('');
 
 // Init header tooltips
-initHeaderTooltips();
 
 // Version badge
 document.getElementById('app-version').textContent = `v${CFG.APP_VERSION}`;

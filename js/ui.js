@@ -1,23 +1,12 @@
 'use strict';
 
-import { CFG, SIG_TIPS, GRID_CONFIG, getGridCapital } from './config.js';
-import { fvgStatus } from './indicators.js';
+import { CFG, GRID_CONFIG, getGridCapital } from './config.js';
 import { calcGridScore } from './grid.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  FORMATTERS
 // ══════════════════════════════════════════════════════════════════
-const CC = { bull:'bull', bear:'bear', neutral:'neutral', warn:'warn' };
-export function col(val, cls) { return `<span class="${CC[cls]||''}">${val}</span>`; }
 export function fmt(n, d=2)   { return n==null ? '—' : Number(n).toLocaleString('en',{minimumFractionDigits:d,maximumFractionDigits:d}); }
-export function fmtB(n)        { return n==null ? '—' : Number(n).toLocaleString('en',{maximumFractionDigits:0}); }
-export function sCol(s)        {
-  if (s==="Bullish") return col(s,"bull");
-  if (s==="Bearish") return col(s,"bear");
-  return `<span class="neutral">${s}</span>`;
-}
-export function scClass(s) { return s>=8?'s-high':s>=6?'s-mid':'s-low'; }
-export function scColor(s) { return s>=8?'var(--green)':s>=6?'var(--yellow)':'var(--red)'; }
 
 // ══════════════════════════════════════════════════════════════════
 //  REGIME & MOMENTUM block — shared by both sheets
@@ -121,56 +110,6 @@ export function buildMarketPulseStrip(pulse) {
     pill('Smart $', smStr,  smCls),
   ].join('');
 }
-
-export function sigValHtml(val, cls) {
-  const cm = { bull:'color:var(--green)', bear:'color:var(--red)', warn:'color:var(--yellow)', neutral:'color:var(--text2)' };
-  return `<span style="${cm[cls]||''};font-weight:700">${val}</span>`;
-}
-
-// ══════════════════════════════════════════════════════════════════
-//  DOM STRING BUILDERS
-// ══════════════════════════════════════════════════════════════════
-
-// ── Main table row ────────────────────────────────────────────────
-export function buildTableRow(name, m, prov) {
-  const rsiH  = m.rsi>70 ? col(fmt(m.rsi,1),"bear") : m.rsi<30 ? col(fmt(m.rsi,1),"bull") : fmt(m.rsi,1);
-  const fundH = m.funding>0 ? col(fmt(m.funding,4)+"%","warn") : col(fmt(m.funding,4)+"%","neutral");
-  const flowH = m.flow>5 ? col(fmt(m.flow,1)+"%","bull") : m.flow<-5 ? col(fmt(m.flow,1)+"%","bear") : fmt(m.flow,1)+"%";
-  const oiH   = m.oiChange>5 ? col(fmt(m.oiChange,2)+"%","bull") : m.oiChange<-5 ? col(fmt(m.oiChange,2)+"%","bear") : fmt(m.oiChange,2)+"%";
-  const cvdH  = v => v>0 ? col("[ACC]","bull") : col("[DIS]","bear");
-  const trend = m.price>m.avwap5d ? col("[UP]","bull") : col("[DN]","bear");
-  const pairs = [Math.abs(m.poc5d-m.poc14d)/m.poc14d*100, Math.abs(m.poc5d-m.poc30d)/m.poc30d*100, Math.abs(m.poc14d-m.poc30d)/m.poc30d*100];
-  const conf  = pairs.filter(p=>p<1.5).length>=2 ? col("[YES]","warn") : "–";
-  const sweepH= m.sweep==="BUY_SWP" ? col("[BUY SWP]","bear") : m.sweep==="SELL_SWP" ? col("[SELL SWP]","bull") : `<span class="neutral">Neutral</span>`;
-  const emaFC = m.price>m.emaFast ? col(fmt(m.emaFast,2),"bull") : col(fmt(m.emaFast,2),"bear");
-  let fvgH = "–";
-  if (m.fvgList?.length) {
-    const g=m.fvgList[0], st=fvgStatus(m.price,g);
-    const typ=g.type==='BULL'?'B':'S', zone=`${g.bottom.toFixed(2)}-${g.top.toFixed(2)}`;
-    if (st.state==='inside') fvgH = col(`${typ}-FVG ${zone} [IN ${st.fillPct.toFixed(0)}%]`,"warn");
-    else fvgH = col(`${typ}-FVG ${zone} d:${st.distPct.toFixed(2)}%`, g.type==='BULL'?"bull":"bear");
-  }
-  const provH = prov==='Bybit' ? `<span style="color:var(--orange);font-size:.6rem">BB</span>` : `<span style="color:var(--cyan2);font-size:.6rem">BN</span>`;
-  const tvEx  = prov==='Bybit' ? 'BYBIT' : 'BINANCE';
-  const tvLink = `<a href="https://www.tradingview.com/chart/?symbol=${tvEx}%3A${name}USDT.P" target="_blank" rel="noopener" class="tv-link">${name}</a>`;
-  return `<tr>
-    <td>${tvLink}</td><td>${fmt(m.price,2)}</td><td>${fundH}</td><td>${rsiH}</td>
-    <td>${fmt(m.atr,4)}</td><td>${flowH}</td><td>${fmt(m.poc5d,1)}</td>
-    <td>${fmt(m.poc14d,1)}</td><td>${fmt(m.avwap5d,1)}</td>
-    <td>${fmt(m.avwap14d,1)}</td><td>${fmt(m.avwap30d,1)}</td>
-    <td>${cvdH(m.cvd5d)}</td><td>${cvdH(m.cvd14d)}</td><td>${cvdH(m.cvd30d)}</td>
-    <td>${fmtB(m.oiNow)}</td><td>${oiH}</td>
-    <td>${sCol(m.structure4h)}</td><td>${sCol(m.structure30d)}</td>
-    <td>${emaFC}</td><td>${fmt(m.emaSlow,2)}</td>
-    <td>${trend}</td><td>${conf}</td><td>${sweepH}</td><td>${fvgH}</td><td>${provH}</td>
-  </tr>`;
-}
-
-
-
-
-
-
 
 // ══════════════════════════════════════════════════════════════════
 //  CIM v6 — CARD BUILDERS
