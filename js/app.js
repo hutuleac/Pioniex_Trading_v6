@@ -6,7 +6,7 @@ import { calcRangeFromATR, calcRecommendedGridCount, calcGridProfitPerGrid,
          assessGridViability, getTickerGridProfile, selectGridDirection,
          estimateGridDuration, calcGridScore } from './grid.js';
 import { fetchPriceFunding, fetchMarketPulse } from './api.js';
-import { getAdvancedMetrics, calcScore, calcBotParams, calcRecommendation } from './indicators.js';
+import { getAdvancedMetrics, calcScore, calcRecommendation } from './indicators.js';
 import { buildMarketPulseStrip,
          buildGridCards, buildGridSheet,
          buildDirectionCards, buildDirectionSheet } from './ui.js';
@@ -28,7 +28,6 @@ let SYMBOLS = (() => {
 let symProvider  = {};   // name → 'Binance' | 'Bybit'
 let allMetrics   = {};   // module-level: used by incremental add + grid re-render
 let allScores    = {};
-let allBots      = {};
 let allRecs      = {};
 let refreshTimer = null, countdownTimer = null, nextRefresh = 0;
 let isLoading    = false;
@@ -117,7 +116,6 @@ async function fetchSingleTicker(name, symbol) {
     m.structure4h, m.structure30d, m.sweep, m.fvgList,
     m.emaFast, m.emaSlow, m.dc20Pos, pf.funding, m.regime
   );
-  const bot      = calcBotParams(pf.price, m.atr, score, direction, m.poc5d, m.poc14d, m.avwap5d, m.fvgList);
   const mFull    = { ...m, price: pf.price, funding: pf.funding };
   const rec      = calcRecommendation(score, direction, m.atrPct ?? 0, pf.funding, m.rsi);
 
@@ -135,17 +133,16 @@ async function fetchSingleTicker(name, symbol) {
   mFull.gridTP         = calcGridTakeProfit(mFull.gridRange.rangeHigh, gridProfile.profile);
   mFull.gridDuration   = estimateGridDuration(mFull.gridRange.rangeWidthPct, mFull.atrPct ?? 1);
 
-  return { mFull, score, direction, detail, bot, rec };
+  return { mFull, score, direction, detail, rec };
 }
 
 // ── Incremental add: fetch one new ticker and re-render cards ─────
 async function addAndRenderTicker(name, symbol) {
   try {
-    const { mFull, score, direction, detail, bot, rec } = await fetchSingleTicker(name, symbol);
+    const { mFull, score, direction, detail, rec } = await fetchSingleTicker(name, symbol);
 
     allMetrics[name]  = mFull;
     allScores[name]   = { score, direction, detail };
-    allBots[name]     = bot;
     allRecs[name]     = rec;
     lastAllMetrics    = allMetrics;
 
@@ -183,7 +180,6 @@ async function fetchAndDisplay() {
   // Reset module-level state for full refresh
   Object.keys(allMetrics).forEach(k => delete allMetrics[k]);
   Object.keys(allScores).forEach(k  => delete allScores[k]);
-  Object.keys(allBots).forEach(k    => delete allBots[k]);
   Object.keys(allRecs).forEach(k    => delete allRecs[k]);
 
   // ── Market Pulse (one-time global fetch, non-blocking) ─────────
@@ -197,10 +193,9 @@ async function fetchAndDisplay() {
 
   for (const [name, symbol] of Object.entries(SYMBOLS)) {
     try {
-      const { mFull, score, direction, detail, bot, rec } = await fetchSingleTicker(name, symbol);
+      const { mFull, score, direction, detail, rec } = await fetchSingleTicker(name, symbol);
       allMetrics[name]  = mFull;
       allScores[name]   = { score, direction, detail };
-      allBots[name]     = bot;
       allRecs[name]     = rec;
     } catch(e) {
       console.error(`[${name}] FATAL:`, e);
@@ -233,11 +228,10 @@ async function fetchAndDisplay() {
 function showModal() {
   document.getElementById('modal-body').innerHTML = `
     <p><strong>Refresh interval:</strong> ${CFG.REFRESH_INTERVAL_SEC}s (${CFG.REFRESH_INTERVAL_SEC/60} min)</p>
-    <p><strong>Score bot minimum:</strong> ${CFG.SCORE_BOT_MIN}/10</p>
+    <p><strong>Score bot minimum:</strong> ${CFG.SCORE_ACTIVE}/10</p>
     <p><strong>RSI OB/OS:</strong> ${CFG.RSI_OB} / ${CFG.RSI_OS} (extreme: ${CFG.RSI_EXTREME_OB}/${CFG.RSI_EXTREME_OS})</p>
     <p><strong>Flow strong threshold:</strong> ±${CFG.FLOW_STRONG}%</p>
     <p><strong>OI squeeze high/med:</strong> >${CFG.OI_SQUEEZE_HIGH}% / >${CFG.OI_SQUEEZE_MED}%</p>
-    <p><strong>SL mult:</strong> ${CFG.SL_ATR_MULT}×ATR · <strong>TP1:</strong> ${CFG.TP1_ATR_MULT}×SL · <strong>TP2:</strong> ${CFG.TP2_ATR_MULT}×SL</p>
     <p><strong>API primary:</strong> Binance Futures (fapi.binance.com)</p>
     <p><strong>API fallback:</strong> Bybit V5 (api.bybit.com) — BuyVol estimated via Williams %R</p>
     <p style="margin-top:10px;font-size:.65rem;color:var(--dim)">All parameters match Trading.py. Bybit CVD uses price-action approximation when taker buy vol is unavailable.</p>
@@ -368,9 +362,8 @@ document.addEventListener('click', e => {
     const score     = allScores[name]?.score ?? 0;
     const direction = allScores[name]?.direction ?? null;
     const detail    = allScores[name]?.detail ?? [];
-    const bot       = allBots[name] ?? null;
     const rec       = allRecs[name] ?? null;
-    html = buildDirectionSheet(name, m, score, direction, detail, bot, rec);
+    html = buildDirectionSheet(name, m, score, direction, detail, rec);
     document.getElementById('sheet-title-text').textContent = `${name} — Analysis`;
     document.getElementById('sheet-title-badge').innerHTML  = '';
   }

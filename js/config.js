@@ -24,9 +24,8 @@ export const CFG = {
   OI_SQUEEZE_HIGH: 10.0, OI_SQUEEZE_MED: 5.0,
   POC_NEAR_PCT: 0.5, FVG_NEAR_PCT: 1.0, FVG_ENTRY_PCT: 2.0, POC_CONFLUENCE_PCT: 1.0,
   VOL_SPIKE_MULT: 2.0, VOL_AVG_WINDOW: 20,
-  SCORE_BOT_MIN: 7.5, CVD_LATERAL_RATIO: 0.2,
-  SL_ATR_MULT: 1.5, TP1_ATR_MULT: 3.0, TP2_ATR_MULT: 5.25,
-  TRAIL_OFFSET_MULT: 0.5, GRID_BUFFER: 0.02,
+  SCORE_ACTIVE: 7.5, CVD_LATERAL_RATIO: 0.2,
+  GRID_BUFFER: 0.02,
 };
 
 export const BINANCE_BASE = "https://fapi.binance.com";
@@ -38,7 +37,7 @@ export const LEGENDS = [
   ["RSI (14)",
     `Relative Strength Index on 4H. Measures price momentum. >70 = overbought (price stretched, pullback likely). <30 = oversold (potential bounce zone). Extreme levels >75 or <25 trigger a −0.5 score penalty. 4H RSI carries far more weight than 1H RSI — use for setup timing, not micro-entries.`],
   ["ATR (14)",
-    `Average True Range on 4H. Measures volatility in price units. Drives SL sizing: SL = Entry ± ${CFG.SL_ATR_MULT}×ATR. ATR% column shows ATR as % of price — >4–5% = high volatility, >5% blocks bot activation. 4H ATR is typically 3–5× larger than 1H ATR for the same asset.`],
+    `Average True Range on 4H. Measures volatility in price units. Drives grid range width and grid SL/TP distance. ATR% column shows ATR as % of price — >4–5% = high volatility, >5% blocks bot activation. 4H ATR is typically 3–5× larger than 1H ATR for the same asset.`],
   ["Flow% 24h",
     `Buy/sell order flow over last 24 one-hour candles. Formula: (BuyVol − SellVol) / TotalVol × 100. >+${CFG.FLOW_STRONG}% = strong buy dominant. <−${CFG.FLOW_STRONG}% = strong sell dominant. >${CFG.FLOW_PARTIAL}% / <−${CFG.FLOW_PARTIAL}% = partial signal. Combines with OI and CVD for Pressure signal.`],
   ["POC 5d/14d/30d",
@@ -72,7 +71,7 @@ export const LEGENDS = [
   ["MACD (12/26/9)",
     `Moving Average Convergence Divergence. MACD line = EMA12 − EMA26. Signal = EMA9 of MACD line. Histogram = MACD − Signal. Positive histogram = bullish momentum building. Negative = bearish. Histogram crossing zero = momentum shift. Visible in the deep card diagnostics panel.`],
   [`Score 0–10`,
-    `Composite setup quality score. Max components: Trend Macro (+2.0) + Pressure (+2.0) + Setup (+2.0) + Trend Swing (+1.5) + CVD Quality (+1.5) + EMA (±0.25) + FVG (+0.5) + POC Conf (+0.5) + Funding (±0.3 to ±0.5) = ~10.75 → clamped to 10. Penalties: RSI extreme (−0.5), OI squeeze on short (−0.5 to −1.0), Structure conflict (−0.5), DC20 range indecision (−0.25, only when Regime=RANGING), Funding crowded (−0.5). Score ≥ ${CFG.SCORE_BOT_MIN} activates bot parameters. 8–10 = strong. 6–7.9 = developing. <6 = avoid.`],
+    `Composite setup quality score. Max components: Trend Macro (+2.0) + Pressure (+2.0) + Setup (+2.0) + Trend Swing (+1.5) + CVD Quality (+1.5) + EMA (±0.25) + FVG (+0.5) + POC Conf (+0.5) + Funding (±0.3 to ±0.5) = ~10.75 → clamped to 10. Penalties: RSI extreme (−0.5), OI squeeze on short (−0.5 to −1.0), Structure conflict (−0.5), DC20 range indecision (−0.25, only when Regime=RANGING), Funding crowded (−0.5). Score ≥ ${CFG.SCORE_ACTIVE} = strong bias. 8–10 = strong. 6–7.9 = developing. <6 = avoid.`],
 ];
 
 // ══════════════════════════════════════════════════════════════════

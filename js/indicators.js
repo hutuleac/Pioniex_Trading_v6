@@ -405,7 +405,7 @@ export function calcScore(price, atr, rsi, flow, oiChange,
     { score+=2.0; detail.push(["Setup LOW SWEEP→LONG",+2.0,"Liq sweep+flow+OI rising"]); }
   else if (sweep==='HIGH_SWEEP' && flow<0 && oiChange<0 && direction==="SHORT")
     { score+=2.0; detail.push(["Setup HIGH SWEEP→SHORT",+2.0,"Liq sweep+flow+OI falling"]); }
-  else if (sweep !== 'NONE')
+  else if (direction && sweep !== 'NONE')
     { score+=0.75; detail.push(["Setup SWEEP partial",+0.75,"Sweep present, partial confirmation"]); }
   else if (nP5  && cvd5d>0 && price>avwap5d && direction==="LONG")
     { score+=1.0; detail.push(["Setup LONG @ POC5d",+1.0,"POC5d+ACC+above AVWAP5d"]); }
@@ -444,13 +444,13 @@ export function calcScore(price, atr, rsi, flow, oiChange,
 
   // 7. POC CONFLUENCE
   const pd1=Math.abs(poc5d-poc14d)/poc14d*100, pd2=Math.abs(poc5d-poc14d)/poc5d*100;
-  if (pd1<CFG.POC_CONFLUENCE_PCT && pd2<CFG.POC_CONFLUENCE_PCT)
+  if (direction && pd1<CFG.POC_CONFLUENCE_PCT && pd2<CFG.POC_CONFLUENCE_PCT)
     { score+=0.5; detail.push(["POC Confluence [YES]",+0.5,`POC5d≈POC14d (<${CFG.POC_CONFLUENCE_PCT}%)`]); }
   else detail.push(["POC Confluence [-]",0.0,`POC5d=${poc5d.toFixed(2)} vs POC14d=${poc14d.toFixed(2)}`]);
 
   // PENALTIES
-  if      (rsi>CFG.RSI_EXTREME_OB) { score-=0.5; detail.push(["RSI overbought",-0.5,`RSI=${rsi.toFixed(1)}`]); }
-  else if (rsi<CFG.RSI_EXTREME_OS) { score-=0.5; detail.push(["RSI oversold",-0.5,`RSI=${rsi.toFixed(1)}`]); }
+  if      (direction==="LONG"  && rsi>CFG.RSI_EXTREME_OB) { score-=0.5; detail.push(["RSI overbought vs LONG",-0.5,`RSI=${rsi.toFixed(1)}`]); }
+  else if (direction==="SHORT" && rsi<CFG.RSI_EXTREME_OS) { score-=0.5; detail.push(["RSI oversold vs SHORT",-0.5,`RSI=${rsi.toFixed(1)}`]); }
   if (direction==="SHORT" && oiChange>CFG.OI_SQUEEZE_HIGH) { score-=1.0; detail.push([`OI>${CFG.OI_SQUEEZE_HIGH}% on SHORT`,-1.0,"High squeeze risk"]); }
   else if (direction==="SHORT" && oiChange>CFG.OI_SQUEEZE_MED) { score-=0.5; detail.push([`OI>${CFG.OI_SQUEEZE_MED}% on SHORT`,-0.5,"Moderate squeeze risk"]); }
   else if (direction==="LONG"  && oiChange<-CFG.OI_SQUEEZE_HIGH) { score-=1.0; detail.push([`OI<-${CFG.OI_SQUEEZE_HIGH}% on LONG`,-1.0,"Massive long liquidations"]); }
@@ -540,37 +540,14 @@ export function calcAtrPct(atr, price) {
 }
 
 export function calcRecommendation(score, direction, atrPct, funding, rsi) {
+  if (!direction) return { rec: 'No bias', recClass: 'bear', blockers: [] };
   const blockers = [];
   if (atrPct > 5)              blockers.push(`ATR ${atrPct.toFixed(1)}% > 5% (high volatility)`);
   if (Math.abs(funding) > 0.1) blockers.push(`Funding ${funding >= 0 ? '+' : ''}${funding.toFixed(4)}% extreme`);
-  if (rsi > 75)                blockers.push(`RSI ${rsi.toFixed(1)} overbought (>75)`);
-  if (rsi < 25)                blockers.push(`RSI ${rsi.toFixed(1)} oversold (<25)`);
-  if (score >= 8 && blockers.length === 0) return { rec: 'Enter',   recClass: 'bull', blockers };
-  if (score >= 8)              return { rec: 'Watch ⚠', recClass: 'warn', blockers };
-  if (score >= 6)              return { rec: 'Watch',   recClass: 'warn', blockers };
-  return                              { rec: 'Avoid',   recClass: 'bear', blockers };
-}
-
-export function calcBotParams(price, atr, score, direction, poc5d, poc14d, avwap5d, fvgList) {
-  if (score < CFG.SCORE_BOT_MIN || !direction) return null;
-  const slDist = atr * CFG.SL_ATR_MULT;
-  let entry, sl, tp1, tp2, side;
-  if (direction === "LONG") {
-    const fvgE = fvgList.find(g=>g.type==='BULL' && Math.abs(price-g.mid)/price*100<CFG.FVG_ENTRY_PCT)?.top ?? price;
-    entry = fvgE; sl = entry-slDist;
-    tp1 = entry + slDist*(CFG.TP1_ATR_MULT/CFG.SL_ATR_MULT);
-    tp2 = entry + slDist*(CFG.TP2_ATR_MULT/CFG.SL_ATR_MULT);
-    side = "BUY / LONG";
-  } else {
-    const fvgE = fvgList.find(g=>g.type==='BEAR' && Math.abs(price-g.mid)/price*100<CFG.FVG_ENTRY_PCT)?.bottom ?? price;
-    entry = fvgE; sl = entry+slDist;
-    tp1 = entry - slDist*(CFG.TP1_ATR_MULT/CFG.SL_ATR_MULT);
-    tp2 = entry - slDist*(CFG.TP2_ATR_MULT/CFG.SL_ATR_MULT);
-    side = "SELL / SHORT";
-  }
-  const lev = score>=9.5?6:score>=9.0?5:score>=8.5?4:score>=8.0?3:2;
-  const posPct = Math.min(30,(10-lev)*5);
-  return { side, entry, sl, tp1, tp2, leverage:lev, posPct,
-    rr1:Math.abs(tp1-entry)/Math.abs(sl-entry), rr2:Math.abs(tp2-entry)/Math.abs(sl-entry),
-    trailTrigger:tp1, trailOffset:slDist*0.5, atrUsed:atr };
+  if (direction === 'LONG'  && rsi > CFG.RSI_EXTREME_OB) blockers.push(`RSI ${rsi.toFixed(1)} overbought vs LONG`);
+  if (direction === 'SHORT' && rsi < CFG.RSI_EXTREME_OS) blockers.push(`RSI ${rsi.toFixed(1)} oversold vs SHORT`);
+  if (score >= CFG.SCORE_ACTIVE)
+    return { rec: blockers.length ? 'Strong ⚠' : 'Strong', recClass: blockers.length ? 'warn' : 'bull', blockers };
+  if (score >= 6) return { rec: 'Developing', recClass: 'warn', blockers };
+  return { rec: 'Weak', recClass: 'bear', blockers };
 }

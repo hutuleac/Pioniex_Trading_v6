@@ -340,13 +340,12 @@ export function buildDirectionCard(name, m, prov = '?', score = 0, direction = n
   if (!m) return '';
 
   // Score ring class
-  const srCls = score >= CFG.SCORE_BOT_MIN ? 'sr-high' : score >= 6 ? 'sr-mid' : 'sr-low';
+  const srCls = score >= CFG.SCORE_ACTIVE ? 'sr-high' : score >= 6 ? 'sr-mid' : 'sr-low';
 
   // Rec badge
-  const recLabel = rec?.rec ?? 'AVOID';
-  const recDir   = direction === 'LONG' ? 'LONG' : direction === 'SHORT' ? 'SHORT' : '';
-  const recText  = recDir ? `${recDir} · ${recLabel}` : recLabel;
-  const recCls   = recLabel === 'Enter' ? 'green' : recLabel === 'Watch' ? 'yellow' : 'red';
+  const recLabel = rec?.rec ?? 'No bias';
+  const recText  = direction ? `${direction} · ${recLabel}` : recLabel;
+  const recCls   = { bull: 'green', warn: 'yellow', bear: 'red' }[rec?.recClass] ?? 'red';
   const recBadge = `<span class="badge-sm ${recCls}">${recText}</span>`;
 
   // Card border class
@@ -359,7 +358,7 @@ export function buildDirectionCard(name, m, prov = '?', score = 0, direction = n
   const isBear = direction === 'SHORT';
   const macroLabel = isBull ? 'Macro Bull' : isBear ? 'Macro Bear' : 'Neutral';
   const macroCls   = isBull ? 'p-bull' : isBear ? 'p-bear' : 'p-neutral';
-  const macroFull  = score >= CFG.SCORE_BOT_MIN;
+  const macroFull  = score >= CFG.SCORE_ACTIVE;
   const macroPill  = `<span class="ind-pill ${macroCls}">${macroLabel}${macroFull ? ' ✓' : ''}</span>`;
 
   // Pill 2: RSI
@@ -428,61 +427,25 @@ export function buildDirectionCards(allMetrics, allScores = {}, allRecs = {}, sy
 }
 
 // ── Direction bottom sheet ────────────────────────────────
-export function buildDirectionSheet(name, m, score = 0, direction = null, detail = [], bot = null, rec = null) {
+export function buildDirectionSheet(name, m, score = 0, direction = null, detail = [], rec = null) {
   if (!m) return '<p class="sheet-note">No data available.</p>';
-
-  const recLabel = rec?.rec ?? 'Avoid';
-  const hasEntry = recLabel === 'Enter' && bot != null;
-  const hasDev   = recLabel === 'Watch';
-
-  // AVWAP above/below
   const price = m.price ?? 0;
-  const av5   = m.avwap5d  != null ? (price > m.avwap5d  ? 'Above ↑' : 'Below ↓') : '—';
-  const av14  = m.avwap14d != null ? (price > m.avwap14d ? 'Above ↑' : 'Below ↓') : '—';
-  const av30  = m.avwap30d != null ? (price > m.avwap30d ? 'Above ↑' : 'Below ↓') : '—';
-  const avColor = (v) => v.startsWith('Above') ? 'var(--green)' : 'var(--red)';
-
-  // CVD labels
-  const cvdLabel = (v) => v == null ? '—' : v > 0 ? 'ACC' : v < 0 ? 'DIS' : 'NEUTRAL';
-  const cvdColor = (v) => v == null ? 'var(--text2)' : v > 0 ? 'var(--green)' : 'var(--red)';
-
-  // Entry/SL/TP block (only when rec = Enter)
-  const entryHtml = hasEntry ? `
-<div class="sheet-section-label">Entry Parameters</div>
-<table class="sheet-table">
-  <tr><td>Entry</td><td style="color:var(--cyan)">${fmt(bot.entry, bot.entry < 1 ? 4 : 2)}</td></tr>
-  <tr><td>Stop Loss (1.5×ATR)</td><td style="color:var(--red)">${fmt(bot.sl, bot.sl < 1 ? 4 : 2)}</td></tr>
-  <tr><td>Take Profit 1</td><td style="color:var(--green)">${fmt(bot.tp1, bot.tp1 < 1 ? 4 : 2)}</td></tr>
-  <tr><td>Take Profit 2</td><td style="color:var(--green)">${fmt(bot.tp2, bot.tp2 < 1 ? 4 : 2)}</td></tr>
-  <tr><td>Leverage</td><td>${bot.leverage ?? '—'}x</td></tr>
-  <tr><td>R:R TP1 / TP2</td><td>1:${bot.rr1?.toFixed(1) ?? '—'} / 1:${bot.rr2?.toFixed(1) ?? '—'}</td></tr>
-</table>` : hasDev
-    ? `<p class="sheet-note">Setup developing — no entry params yet</p>`
-    : `<p class="sheet-note">No setup — skip this asset</p>`;
-
+  const side  = ref => ref == null ? '—' : price > ref ? '<span class="bull">Above</span>' : '<span class="bear">Below</span>';
+  const cvd   = v => v > 0 ? '<span class="bull">ACC</span>' : v < 0 ? '<span class="bear">DIS</span>' : '—';
+  const rows  = detail.map(([c, v, why]) =>
+    `<tr><td>${c}<br><span class="neutral" style="font-size:.7rem">${why}</span></td><td class="${v > 0 ? 'bull' : v < 0 ? 'bear' : 'neutral'}">${v > 0 ? '+' : ''}${v.toFixed(2)}</td></tr>`).join('');
+  const blockers = (rec?.blockers ?? []).map(b => `<div class="warn" style="font-size:.75rem;margin-top:3px">⚠ ${b}</div>`).join('');
   return `
-<div class="sheet-section-label">Signal</div>
-<table class="sheet-table">
-  <tr><td>Score</td><td style="color:${score>=7.5?'var(--green)':score>=6?'var(--yellow)':'var(--red)'}">${score.toFixed(1)} / 10</td></tr>
-  <tr><td>Direction</td><td>${direction ?? 'WAIT'}</td></tr>
-  <tr><td>RSI 4H</td><td style="color:${m.rsi>70||m.rsi<30?'var(--yellow)':'var(--green)'}">${m.rsi?.toFixed(1) ?? '—'}</td></tr>
-  <tr><td>Funding</td><td>${m.funding != null ? m.funding.toFixed(3)+'%' : '—'}</td></tr>
-  <tr><td>OI% 7d</td><td style="color:${(m.oiChange??0)>0?'var(--green)':'var(--red)'}">${m.oiChange != null ? m.oiChange.toFixed(1)+'%' : '—'}</td></tr>
-  <tr><td>ATR 4H</td><td>${m.atr != null ? fmt(m.atr, m.atr<1?4:2) : '—'}</td></tr>
-</table>
-
+<div class="sheet-section-label">Score breakdown · ${score.toFixed(1)} / 10 · ${direction ?? 'No bias'}</div>
+<table class="sheet-table">${rows}</table>
+${blockers}
 <div class="sheet-section-label">Trend</div>
 <table class="sheet-table">
-  <tr><td>Structure 4H</td><td>${m.structure4h ?? '—'}</td></tr>
-  <tr><td>Structure 30d</td><td>${m.structure30d ?? '—'}</td></tr>
-  <tr><td>AVWAP 5d</td><td style="color:${avColor(av5)}">${av5}</td></tr>
-  <tr><td>AVWAP 14d</td><td style="color:${avColor(av14)}">${av14}</td></tr>
-  <tr><td>AVWAP 30d</td><td style="color:${avColor(av30)}">${av30}</td></tr>
-  <tr><td>CVD 5d / 14d / 30d</td>
-      <td><span style="color:${cvdColor(m.cvd5d)}">${cvdLabel(m.cvd5d)}</span> / <span style="color:${cvdColor(m.cvd14d)}">${cvdLabel(m.cvd14d)}</span> / <span style="color:${cvdColor(m.cvd30d)}">${cvdLabel(m.cvd30d)}</span></td></tr>
+  <tr><td>Structure 4H / 30d</td><td>${m.structure4h} / ${m.structure30d}</td></tr>
+  <tr><td>AVWAP 5d / 14d / 30d</td><td>${side(m.avwap5d)} / ${side(m.avwap14d)} / ${side(m.avwap30d)}</td></tr>
+  <tr><td>CVD 5d / 14d / 30d</td><td>${cvd(m.cvd5d)} / ${cvd(m.cvd14d)} / ${cvd(m.cvd30d)}</td></tr>
+  <tr><td>RSI 4H</td><td>${m.rsi?.toFixed(1) ?? '—'}</td></tr>
+  <tr><td>OI 7d</td><td>${m.oiChange != null ? m.oiChange.toFixed(1) + '%' : '—'}</td></tr>
 </table>
-
-${buildRegimeBlock(m, { includeSqueezeConf: false })}
-
-${entryHtml}`;
+${buildRegimeBlock(m, { includeSqueezeConf: false })}`;
 }

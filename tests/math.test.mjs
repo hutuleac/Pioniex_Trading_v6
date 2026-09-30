@@ -143,6 +143,26 @@ await test('computeMetrics exposes squeeze + squeezeConf', () => {
   assert.ok(m.squeezeConf >= 0 && m.squeezeConf <= 100);
 });
 
+// ── Task 7: direction score ──
+// args: price, atr, rsi, flow, oiChange, poc5d, avwap5d, poc14d, avwap14d, avwap30d,
+//       cvd5d, cvd14d, cvd30d, structure4h, structure30d, sweep, fvgList, emaFast, emaSlow, dc20Pos, funding, regime
+const scoreArgs = o => [o.price ?? 100, 1, o.rsi ?? 50, 0, 0, 100, 100, 100, o.avwap ?? 100, o.avwap ?? 100,
+  0, 0, o.cvd30d ?? 0, 'Neutral', o.s30 ?? 'Neutral', o.sweep ?? 'NONE', [], 0, 0, 'INSIDE', 0, 'MIXED'];
+await test('no directional bias → no setup/POC points (was +1.25)', () => {
+  const r = I.calcScore(...scoreArgs({ sweep: 'LOW_SWEEP' }));
+  assert.equal(r.direction, null);
+  assert.equal(r.score, 0);
+});
+await test('RSI overbought does not penalise a SHORT bias', () => {
+  const r = I.calcScore(...scoreArgs({ price: 90, avwap: 100, s30: 'Bearish', cvd30d: -1, rsi: 80 }));
+  assert.equal(r.direction, 'SHORT');
+  assert.ok(!r.detail.some(([c]) => c.startsWith('RSI')), 'unexpected RSI penalty');
+});
+await test('calcRecommendation: no direction → No bias', () => {
+  assert.equal(I.calcRecommendation(9, null, 1, 0, 50).rec, 'No bias');
+});
+await test('calcBotParams removed', () => assert.equal(I.calcBotParams, undefined));
+
 // ── summary ──
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exitCode = fail ? 1 : 0;
