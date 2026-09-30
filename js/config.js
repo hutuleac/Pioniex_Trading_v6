@@ -13,7 +13,8 @@ export const CFG = {
   FLOW_LIMIT           : 24,
   RSI_PERIOD           : 14,    ATR_PERIOD : 14,
   EMA_FAST             : 50,    EMA_SLOW   : 200,
-  STRUCT_LOOKBACK_4H   : 20,    STRUCT_LOOKBACK_30D : 40,
+  STRUCT_LOOKBACK_4H   : 40,    STRUCT_K_4H : 2,   STRUCT_K_30D : 5,   // pivot = extreme vs k bars each side
+  SWEEP_LOOKBACK       : 20,
   FVG_MAX_GAPS         : 5,
   DONCHIAN_PERIOD_SHORT: 20,    DONCHIAN_PERIOD_LONG: 55,
   DONCHIAN_BREAK_BUFFER_PCT: 0.25,   // % of mid, anti-flap buffer at band edges
@@ -59,7 +60,7 @@ export const LEGENDS = [
   ["FVG (Fair Value Gap)",
     `Institutional price imbalance on 4H. Created when 3 consecutive candles leave an unfilled gap (candle 1 high < candle 3 low = Bull FVG; candle 1 low > candle 3 high = Bear FVG). ★ = 4H structure confirms the gap direction (higher reliability). FILLING = price is inside the gap. BULL FVG = support zone when revisited. BEAR FVG = resistance. Up to 5 intact gaps tracked, sorted by proximity.`],
   ["Liquidity Sweep",
-    `Detects when the current 4H candle pierces the all-time high or low of all prior candles in the dataset, then closes back inside. BUY_SWP = low swept then closed above = trapped shorts flushed, potential LONG entry. SELL_SWP = high swept then closed below = trapped longs flushed, potential SHORT. Strongest setup when combined with a nearby FVG. Triggers the Setup LONG/SHORT VALID signal (+2.0).`],
+    `Last closed 4H candle pierces the highest high or lowest low of the prior 20 candles, then closes back inside. LOW_SWEEP = low swept then closed above = trapped shorts flushed, potential LONG. HIGH_SWEEP = high swept then closed below = trapped longs flushed, potential SHORT. A close beyond the level is a breakout, not a sweep. Strongest when combined with a nearby FVG. Triggers the Setup signal (+2.0).`],
   ["Donchian 20/55",
     `Donchian Channel: highest high and lowest low over N 4H candles. DC20 (20-period) = short-term range. DC55 (55-period) = macro range. INSIDE = price within range = ranging conditions. BREAK_UP = price near/above top (${CFG.DONCHIAN_BREAK_BUFFER_PCT}% buffer). BREAK_DOWN = price near/below bottom. DC20 INSIDE adds −0.25 score penalty (range indecision for directional trades). Used with ADX to classify Regime.`],
   ["Regime",

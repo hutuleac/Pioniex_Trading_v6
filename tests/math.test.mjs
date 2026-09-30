@@ -82,6 +82,32 @@ await test('computeMetrics survives a 60-candle new listing', () => {
   assert.ok(Number.isFinite(m.rsi) && Number.isFinite(m.atr) && Number.isFinite(m.emaSlow));
 });
 
+// ── Task 4: structure + sweep ──
+await test('rising zigzag → Bullish, falling → Bearish', () => {
+  assert.equal(I.calcMarketStructure(wave(60, 100, 0.5), 2), 'Bullish');
+  assert.equal(I.calcMarketStructure(wave(60, 200, -0.5), 2), 'Bearish');
+});
+await test('4H and 30d structure can now differ', () => {
+  const d = [...wave(140, 200, -0.5), ...Array.from({ length: 40 }, () => bar(100))];
+  assert.equal(I.calcMarketStructure(d.slice(-40), 2), 'Neutral');
+  assert.equal(I.calcMarketStructure(d, 5), 'Bearish');
+});
+const flat = n => Array.from({ length: n }, () => bar(100));   // High 101, Low 99
+await test('high poked above prior 20-bar high and closed back inside → HIGH_SWEEP', () => {
+  assert.equal(I.calcSweep([...flat(21), { ...bar(100), High: 103, Close: 100.5 }], 20), 'HIGH_SWEEP');
+});
+await test('low poked below prior 20-bar low and closed back inside → LOW_SWEEP', () => {
+  assert.equal(I.calcSweep([...flat(21), { ...bar(100), Low: 97, Close: 99.5 }], 20), 'LOW_SWEEP');
+});
+await test('close beyond the level is a breakout, not a sweep', () => {
+  assert.equal(I.calcSweep([...flat(21), { ...bar(102), High: 103, Close: 102 }], 20), 'NONE');
+});
+await test('computeMetrics structure fields are valid labels', () => {
+  const m = I.computeMetrics(btc.k4.slice(-499), btc.k1, { oiNow: 1, oiChange: 0 });
+  for (const s of [m.structure4h, m.structure30d]) assert.ok(['Bullish', 'Bearish', 'Neutral'].includes(s));
+  assert.ok(['HIGH_SWEEP', 'LOW_SWEEP', 'NONE'].includes(m.sweep));
+});
+
 // ── summary ──
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exitCode = fail ? 1 : 0;

@@ -117,14 +117,40 @@ export function calcCvd(raw) {
   }, 0);
 }
 
-export function calcMarketStructure(df, lookback = 20) {
-  if (df.length < lookback + 2) return "Neutral";
-  const s = df.slice(-lookback);
-  const n = s.length;
-  const H = i => s[n - 1 - i].High, L = i => s[n - 1 - i].Low;
-  if (H(0)>H(2) && H(2)>H(4) && L(0)>L(2) && L(2)>L(4)) return "Bullish";
-  if (H(0)<H(2) && H(2)<H(4) && L(0)<L(2) && L(2)<L(4)) return "Bearish";
-  return "Neutral";
+// Fractal pivots: a pivot high is higher than the k bars before it and not exceeded by the k bars after it.
+export function findPivots(df, k) {
+  const highs = [], lows = [];
+  for (let i = k; i < df.length - k; i++) {
+    let isH = true, isL = true;
+    for (let j = 1; j <= k; j++) {
+      if (!(df[i].High > df[i - j].High && df[i].High >= df[i + j].High)) isH = false;
+      if (!(df[i].Low  < df[i - j].Low  && df[i].Low  <= df[i + j].Low))  isL = false;
+    }
+    if (isH) highs.push(df[i].High);
+    if (isL) lows.push(df[i].Low);
+  }
+  return { highs, lows };
+}
+
+// HH+HL = Bullish, LH+LL = Bearish, from the last two swing pivots.
+export function calcMarketStructure(df, k = 2) {
+  const { highs, lows } = findPivots(df, k);
+  if (highs.length < 2 || lows.length < 2) return 'Neutral';
+  const [h1, h2] = highs.slice(-2), [l1, l2] = lows.slice(-2);
+  if (h2 > h1 && l2 > l1) return 'Bullish';
+  if (h2 < h1 && l2 < l1) return 'Bearish';
+  return 'Neutral';
+}
+
+// Liquidity sweep on the last CLOSED candle vs the prior `lookback` candles' extreme.
+export function calcSweep(closed, lookback = CFG.SWEEP_LOOKBACK) {
+  if (closed.length < lookback + 1) return 'NONE';
+  const c = closed[closed.length - 1];
+  let hi = -Infinity, lo = Infinity;
+  for (const k of closed.slice(-lookback - 1, -1)) { if (k.High > hi) hi = k.High; if (k.Low < lo) lo = k.Low; }
+  if (c.High > hi && c.Close < hi) return 'HIGH_SWEEP';   // trapped breakout buyers → bearish
+  if (c.Low  < lo && c.Close > lo) return 'LOW_SWEEP';    // trapped breakdown sellers → bullish
+  return 'NONE';
 }
 
 export function calcFvg(df, maxGaps = 5) {
@@ -230,6 +256,7 @@ export function computeMetrics(raw4h, rawFlow, oi) {
   const raw5d = raw4h.slice(-CFG.KLINES_5D), raw14d = raw4h.slice(-CFG.KLINES_14D), raw30d = raw4h.slice(-CFG.KLINES_30D);
   const df5d  = df4h.slice(-CFG.KLINES_5D),  df14d  = df4h.slice(-CFG.KLINES_14D),  df30d  = df4h.slice(-CFG.KLINES_30D);
   const dfFl  = parseKlines(rawFlow);
+  const closed = df4h.slice(0, -1);   // excludes the forming candle
   const volume5d = df5d.reduce((s, k) => s + k.Volume, 0);
 
   // ── Indicators on 4H ──────────────────────────────────────────
@@ -242,14 +269,8 @@ export function computeMetrics(raw4h, rawFlow, oi) {
   const volCurr = df4h[df4h.length-1].Volume;
   const volSpike = volCurr >= CFG.VOL_SPIKE_MULT * volAvg;
 
-  // Sweep: current candle vs ALL-TIME high/low of previous candles
-  const last = df4h[df4h.length-1];
-  const prevSlice = df4h.slice(0, -1);
-  let prevHighV = -Infinity, prevLowV = Infinity;
-  for (const k of prevSlice) { if (k.High > prevHighV) prevHighV = k.High; if (k.Low < prevLowV) prevLowV = k.Low; }
-  let sweep = "Neutral";
-  if (last.High > prevHighV && last.Close < prevHighV) sweep = "BUY_SWP";
-  else if (last.Low  < prevLowV  && last.Close > prevLowV)  sweep = "SELL_SWP";
+  const last  = df4h[df4h.length - 1];
+  const sweep = calcSweep(closed, CFG.SWEEP_LOOKBACK);
 
   // ── Multi-timeframe POC / AVWAP ────────────────────────────────
   const { poc:poc5d,  avwap:avwap5d  } = calcPocAvwap(df5d);
@@ -262,8 +283,8 @@ export function computeMetrics(raw4h, rawFlow, oi) {
   const cvd30d = calcCvd(raw30d);
 
   // ── Structure ──────────────────────────────────────────────────
-  const structure4h  = calcMarketStructure(df4h,  CFG.STRUCT_LOOKBACK_4H);
-  const structure30d = calcMarketStructure(df30d, CFG.STRUCT_LOOKBACK_30D);
+  const structure4h  = calcMarketStructure(closed.slice(-CFG.STRUCT_LOOKBACK_4H), CFG.STRUCT_K_4H);
+  const structure30d = calcMarketStructure(closed.slice(-CFG.KLINES_30D), CFG.STRUCT_K_30D);
 
   // ── FVG — FIXED: use last 100 candles (matches Python KLINES_MAIN=100) ──
   const fvgList = calcFvg(df4h.slice(-CFG.KLINES_FVG), CFG.FVG_MAX_GAPS);
@@ -359,11 +380,11 @@ export function calcScore(price, atr, rsi, flow, oiChange,
   else detail.push(["CVD mixed",0.0,"Inconsistent across TFs"]);
 
   // 5. SETUP
-  if (sweep==="SELL_SWP" && flow>0 && oiChange>0 && direction==="LONG")
-    { score+=2.0; detail.push(["Setup SELL SWEEP→LONG",+2.0,"Liq sweep+flow+OI rising"]); }
-  else if (sweep==="BUY_SWP" && flow<0 && oiChange<0 && direction==="SHORT")
-    { score+=2.0; detail.push(["Setup BUY SWEEP→SHORT",+2.0,"Liq sweep+flow+OI falling"]); }
-  else if (["SELL_SWP","BUY_SWP"].includes(sweep))
+  if (sweep==='LOW_SWEEP' && flow>0 && oiChange>0 && direction==="LONG")
+    { score+=2.0; detail.push(["Setup LOW SWEEP→LONG",+2.0,"Liq sweep+flow+OI rising"]); }
+  else if (sweep==='HIGH_SWEEP' && flow<0 && oiChange<0 && direction==="SHORT")
+    { score+=2.0; detail.push(["Setup HIGH SWEEP→SHORT",+2.0,"Liq sweep+flow+OI falling"]); }
+  else if (sweep !== 'NONE')
     { score+=0.75; detail.push(["Setup SWEEP partial",+0.75,"Sweep present, partial confirmation"]); }
   else if (nP5  && cvd5d>0 && price>avwap5d && direction==="LONG")
     { score+=1.0; detail.push(["Setup LONG @ POC5d",+1.0,"POC5d+ACC+above AVWAP5d"]); }
