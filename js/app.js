@@ -61,6 +61,27 @@ function store(name, r) {
 }
 function forget(name) { for (const k of Object.keys(state)) delete state[k][name]; }
 
+// ── Cache: last good results, so the phone opens to data instantly (grid plans re-derived from settings) ──
+const CACHE_KEY = 'cim_cache_v7';
+function saveCache() {
+  const metrics = {};
+  for (const [n, m] of Object.entries(state.metrics)) { const { gridPlans, gridVerdicts, ...raw } = m; metrics[n] = raw; }
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: lastUpdate, metrics, scores: state.scores, recs: state.recs, provider: state.provider })); }
+  catch (e) { console.warn('[cache] save failed', e.message); }
+}
+function loadCache() {
+  try {
+    const c = JSON.parse(localStorage.getItem(CACHE_KEY));
+    if (!c?.metrics) return;
+    for (const [n, m] of Object.entries(c.metrics)) {
+      if (!SYMBOLS[n]) continue;
+      attachGrid(n, m);
+      state.metrics[n] = m; state.scores[n] = c.scores?.[n]; state.recs[n] = c.recs?.[n]; state.provider[n] = c.provider?.[n];
+    }
+    lastUpdate = c.ts || 0;
+  } catch { /* corrupt cache → cold start */ }
+}
+
 async function fetchAndDisplay() {
   if (isLoading) return;
   isLoading = true;
@@ -80,7 +101,7 @@ async function fetchAndDisplay() {
   }
   for (const n of Object.keys(state.metrics)) if (!SYMBOLS[n]) forget(n);
 
-  if (ok) lastUpdate = Date.now();
+  if (ok) { lastUpdate = Date.now(); saveCache(); }
   isLoading = false;
   $('refresh-btn').disabled = false;
   if (!ok) setStatus('error', lastUpdate ? 'Offline — showing last data' : 'Offline');
@@ -212,7 +233,7 @@ function renderChips() {
 function removeTicker(name) {
   if (Object.keys(SYMBOLS).length <= 1) return;
   delete SYMBOLS[name]; forget(name);
-  saveSymbols(); renderChips(); render();
+  saveSymbols(); saveCache(); renderChips(); render();
 }
 async function handleAdd() {
   const input = $('ticker-add-input'), btn = $('btn-add-ticker'), msg = $('ticker-add-msg');
@@ -223,7 +244,7 @@ async function handleAdd() {
   try {
     store(name, await fetchSingleTicker(name, name + 'USDT'));
     SYMBOLS[name] = name + 'USDT';
-    saveSymbols(); renderChips(); render();
+    saveSymbols(); saveCache(); renderChips(); render();
     msg.textContent = `✓ ${name} added`; input.value = '';
   } catch {
     msg.textContent = `✗ ${name}USDT not found on Binance or Bybit`;
@@ -261,4 +282,9 @@ showTab(['grid', 'signals', 'settings'].includes(startTab) ? startTab : 'grid');
 setMode(getSettings().mode);
 setInterval(updateAge, 30000);
 initSettings();
+loadCache();
+if (Object.keys(state.metrics).length) { render(); updateAge(); }
+document.addEventListener('visibilitychange', () => {   // iOS pauses timers in background tabs
+  if (document.visibilityState === 'visible' && Date.now() - lastUpdate > CFG.REFRESH_INTERVAL_SEC * 1000) fetchAndDisplay();
+});
 fetchAndDisplay();
