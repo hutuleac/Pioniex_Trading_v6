@@ -211,7 +211,6 @@ export function calcGridScore(m) {
   if (!m) return { score: 0, label: 'AVOID', components: [], recs: [] };
 
   const V       = GRID_CONFIG.VIABILITY;
-  const SQ      = GRID_CONFIG.SQUEEZE;
   const LAT     = GRID_CONFIG.CVD_LATERAL;
   const adx     = m.adx?.adx ?? 0;
   const bbLabel = m.bb?.label ?? 'normal';
@@ -224,9 +223,6 @@ export function calcGridScore(m) {
   const cvdDelta = Math.abs(m.cvd5d ?? 0);
   const vol5d    = Math.max(m.volume5d ?? 1, 1);
   const cvdRatio = cvdDelta / vol5d;
-  const atr      = m.atr ?? 0;
-  const dcW      = m.dc20?.width ?? 0;
-  const dcAtr    = atr > 0 ? dcW / atr : 99;
 
   const components = [];
   let score = 0;
@@ -246,14 +242,12 @@ export function calcGridScore(m) {
     detail: `${bbBw.toFixed(1)}% — ${bbLabel === 'squeeze' ? 'compressed ✓' : bbLabel === 'normal' ? 'normal' : 'expanded ✗'}` });
   score += bbScore;
 
-  // Donchian Squeeze (max 1.5) — NEW: canonical range detector
-  const bbTight = bbBw < SQ.BB_WIDTH_MAX;
-  const dcTight = dcAtr < SQ.DC_ATR_RATIO_MAX;
-  const dqScore = (bbTight && dcTight) ? 1.5 : (bbTight || dcTight) ? 0.75 : 0.0;
-  components.push({ label: 'DC Squeeze', score: dqScore, max: 1.5,
-    detail: (bbTight && dcTight) ? `BB<${SQ.BB_WIDTH_MAX}% + DC20/ATR<${SQ.DC_ATR_RATIO_MAX} ✓`
-          : (bbTight || dcTight) ? `Partial: ${bbTight ? 'BB tight' : 'DC tight'} only`
-          : `BB=${bbBw.toFixed(1)}% DC/ATR=${dcAtr.toFixed(2)} — not compressed` });
+  // Squeeze (max 1.5) — per-coin percentile (see calcSqueeze)
+  const sq = m.squeeze ?? { squeezed: false, bwRank: 50, dcAtrRank: 50 };
+  const partial = sq.bwRank <= CFG.SQUEEZE.PCTL || sq.dcAtrRank <= CFG.SQUEEZE.PCTL;
+  const dqScore = sq.squeezed ? 1.5 : partial ? 0.75 : 0.0;
+  components.push({ label: 'Squeeze', score: dqScore, max: 1.5,
+    detail: `BB width p${Math.round(sq.bwRank)} · DC20/ATR p${Math.round(sq.dcAtrRank)} (squeeze ≤ p${CFG.SQUEEZE.PCTL})` });
   score += dqScore;
 
   // CVD lateral (max 1.5) — gradient replaces binary cliff

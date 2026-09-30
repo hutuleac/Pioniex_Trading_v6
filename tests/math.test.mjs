@@ -120,6 +120,29 @@ await test('POC spreads volume over the high–low range', () => {
   assert.ok(poc >= 0 && poc <= 2, `poc=${poc}`);
 });
 
+// ── Task 6: squeeze + Donchian ──
+await test('squeeze detected when range compresses to the coin’s lowest percentile', () => {
+  const d = [...wave(300, 100, 0, 10, 20), ...Array.from({ length: 30 }, () => bar(100, 100, 0.1))];
+  const s = I.calcSqueeze(d);
+  assert.equal(s.squeezed, true);
+  assert.ok(s.conf >= 80, `conf=${s.conf}`);
+});
+await test('no squeeze when range is expanding', () => {
+  const d = [...wave(300, 100, 0, 10, 20), ...wave(30, 100, 0, 40, 10)];
+  assert.equal(I.calcSqueeze(d).squeezed, false);
+});
+await test('Donchian break means beyond the closed channel, not near its edge', () => {
+  const dc = I.calcDonchian(flat(20), 20);                 // high 101, low 99
+  assert.equal(I.donchianPos(101.5, dc), 'BREAK_UP');
+  assert.equal(I.donchianPos(100.9, dc), 'INSIDE');        // old 0.25% buffer said BREAK_UP
+  assert.equal(I.donchianPos(98.5, dc), 'BREAK_DOWN');
+});
+await test('computeMetrics exposes squeeze + squeezeConf', () => {
+  const m = I.computeMetrics(btc.k4.slice(-499), btc.k1, { oiNow: 1, oiChange: 0 });
+  assert.equal(typeof m.squeeze.squeezed, 'boolean');
+  assert.ok(m.squeezeConf >= 0 && m.squeezeConf <= 100);
+});
+
 // ── summary ──
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exitCode = fail ? 1 : 0;

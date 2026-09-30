@@ -18,8 +18,7 @@ export const CFG = {
   FVG_MAX_GAPS         : 5,
   POC_BINS             : 24,
   DONCHIAN_PERIOD_SHORT: 20,    DONCHIAN_PERIOD_LONG: 55,
-  DONCHIAN_BREAK_BUFFER_PCT: 0.25,   // % of mid, anti-flap buffer at band edges
-  SQUEEZE: { BB_WIDTH_MAX: 5.0, DC_ATR_RATIO_MAX: 1.0 },
+  SQUEEZE: { PCTL: 20, HISTORY: 300 },   // squeeze = BB width AND DC20/ATR both in this coin's lowest 20% of the last 300 candles
   RSI_OB: 70, RSI_OS: 30, RSI_EXTREME_OB: 75, RSI_EXTREME_OS: 25,
   FLOW_STRONG: 5.0, FLOW_PARTIAL: 2.0,
   OI_SQUEEZE_HIGH: 10.0, OI_SQUEEZE_MED: 5.0,
@@ -63,7 +62,7 @@ export const LEGENDS = [
   ["Liquidity Sweep",
     `Last closed 4H candle pierces the highest high or lowest low of the prior 20 candles, then closes back inside. LOW_SWEEP = low swept then closed above = trapped shorts flushed, potential LONG. HIGH_SWEEP = high swept then closed below = trapped longs flushed, potential SHORT. A close beyond the level is a breakout, not a sweep. Strongest when combined with a nearby FVG. Triggers the Setup signal (+2.0).`],
   ["Donchian 20/55",
-    `Donchian Channel: highest high and lowest low over N 4H candles. DC20 (20-period) = short-term range. DC55 (55-period) = macro range. INSIDE = price within range = ranging conditions. BREAK_UP = price near/above top (${CFG.DONCHIAN_BREAK_BUFFER_PCT}% buffer). BREAK_DOWN = price near/below bottom. DC20 INSIDE adds −0.25 score penalty (range indecision for directional trades). Used with ADX to classify Regime.`],
+    `Donchian Channel: highest high and lowest low over N 4H candles. DC20 (20-period) = short-term range. DC55 (55-period) = macro range. INSIDE = price within range = ranging conditions. BREAK_UP / BREAK_DOWN = live price outside the channel of prior closed candles. DC20 INSIDE adds −0.25 score penalty (range indecision for directional trades). Used with ADX to classify Regime.`],
   ["Regime",
     `Composite market state derived from ADX + Bollinger Bands + Donchian. SQUEEZE = BB narrow + DC20 range tight → coiling, breakout imminent. TRENDING_UP = ADX >22 + DC20 break up + price above EMA50. TRENDING_DOWN = ADX >22 + DC20 break down + price below EMA50. EXPANSION = DC break + BB wide → breakout already underway. RANGING = ADX <18 + price inside DC20 → ideal for grids. MIXED = no clear classification.`],
   ["Squeeze Conf",
@@ -101,12 +100,6 @@ export const GRID_CONFIG = {
     ATR_WARN         : 4.5,  // warn if ATR% above this (high volatility)
     RSI_WARN_HIGH    : 58,   // warn if RSI above this (elevated pressure)
     RSI_WARN_LOW     : 32,   // warn if RSI below this (oversold risk)
-  },
-
-  // Donchian-based squeeze detector thresholds
-  SQUEEZE: {
-    BB_WIDTH_MAX     : 5.0,  // BB bandwidth below this counts as compressed
-    DC_ATR_RATIO_MAX : 1.0,  // DC20 width / ATR below this = tight range
   },
 
   // CVD laterality gradient (replaces binary CFG.CVD_LATERAL_RATIO cliff)

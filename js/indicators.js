@@ -57,22 +57,55 @@ export function calcRsi(df, period = 14) {
   return avgL === 0 ? 100 : 100 - 100 / (1 + avgG / avgL);
 }
 
+function trueRange(df, i) {
+  return Math.max(df[i].High - df[i].Low, Math.abs(df[i].High - df[i - 1].Close), Math.abs(df[i].Low - df[i - 1].Close));
+}
+export function atrSeries(df, period = 14) {
+  const out = new Array(df.length).fill(NaN);
+  if (df.length < period + 1) return out;
+  let a = 0;
+  for (let i = 1; i <= period; i++) a += trueRange(df, i);
+  a /= period; out[period] = a;
+  for (let i = period + 1; i < df.length; i++) { a = (a * (period - 1) + trueRange(df, i)) / period; out[i] = a; }
+  return out;
+}
 export function calcAtr(df, period = 14) {
-  if (df.length < period + 1) return 0;
-  let sum = 0;
-  for (let i = 1; i <= period; i++) {
-    sum += Math.max(df[i].High - df[i].Low,
-                    Math.abs(df[i].High - df[i-1].Close),
-                    Math.abs(df[i].Low  - df[i-1].Close));
+  return df.length < period + 1 ? 0 : atrSeries(df, period).at(-1);
+}
+
+export function percentileRank(arr, v) {
+  if (!arr.length) return 50;
+  let n = 0;
+  for (const x of arr) if (x <= v) n++;
+  return n / arr.length * 100;
+}
+
+// Squeeze relative to the coin's OWN history: fixed thresholds never fit every coin (DC20/ATR ranged 2.96–4.95 live).
+export function calcSqueeze(closed, win = CFG.DONCHIAN_PERIOD_SHORT) {
+  const atr = atrSeries(closed, CFG.ATR_PERIOD), bw = [], da = [];
+  for (let i = Math.max(win - 1, CFG.ATR_PERIOD); i < closed.length; i++) {
+    let hi = -Infinity, lo = Infinity, sum = 0;
+    for (let j = i - win + 1; j <= i; j++) {
+      const k = closed[j];
+      if (k.High > hi) hi = k.High;
+      if (k.Low < lo) lo = k.Low;
+      sum += k.Close;
+    }
+    const mean = sum / win;
+    let v = 0;
+    for (let j = i - win + 1; j <= i; j++) v += (closed[j].Close - mean) ** 2;
+    bw.push(4 * Math.sqrt(v / win) / mean * 100);   // BB(20,2) bandwidth %
+    da.push(atr[i] > 0 ? (hi - lo) / atr[i] : 0);
   }
-  let atr = sum / period;
-  for (let i = period + 1; i < df.length; i++) {
-    const tr = Math.max(df[i].High - df[i].Low,
-                        Math.abs(df[i].High - df[i-1].Close),
-                        Math.abs(df[i].Low  - df[i-1].Close));
-    atr = (atr * (period - 1) + tr) / period;
-  }
-  return atr;
+  if (!bw.length) return { squeezed: false, conf: 0, bwRank: 50, dcAtrRank: 50, dcAtr: 0 };
+  const H = CFG.SQUEEZE.HISTORY;
+  const bwRank    = percentileRank(bw.slice(-H), bw.at(-1));
+  const dcAtrRank = percentileRank(da.slice(-H), da.at(-1));
+  return {
+    squeezed: bwRank <= CFG.SQUEEZE.PCTL && dcAtrRank <= CFG.SQUEEZE.PCTL,
+    conf: Math.round(100 - (bwRank + dcAtrRank) / 2),
+    bwRank, dcAtrRank, dcAtr: da.at(-1),
+  };
 }
 
 export function calcEma(df, span) {
@@ -197,42 +230,24 @@ export function calcDonchian(df, period = 20) {
   return { high: hi, low: lo, mid, width, widthPct };
 }
 
-export function donchianPos(price, dc, bufferPct = 0.25) {
+// Channel is built from CLOSED candles, so a break means the live price is genuinely outside it.
+export function donchianPos(price, dc) {
   if (!dc) return 'UNKNOWN';
-  const buf = dc.mid * (bufferPct / 100);
-  if (price > dc.high - buf) return 'BREAK_UP';
-  if (price < dc.low  + buf) return 'BREAK_DOWN';
+  if (price > dc.high) return 'BREAK_UP';
+  if (price < dc.low)  return 'BREAK_DOWN';
   return 'INSIDE';
 }
 
 // Composite regime label — plain-English market state
 export function calcRegime(m) {
   const adx = m.adx?.adx ?? 0;
-  const bw  = m.bbBw ?? 0;
-  const dcW = m.dc20?.width ?? 0;
-  const atr = m.atr ?? 0;
-  const dcAtr = atr > 0 ? dcW / atr : 99;
-  const squeezed = bw < CFG.SQUEEZE.BB_WIDTH_MAX && dcAtr < CFG.SQUEEZE.DC_ATR_RATIO_MAX;
-  if (squeezed) return 'SQUEEZE';
+  const brk = m.dc20Pos === 'BREAK_UP' || m.dc20Pos === 'BREAK_DOWN';
+  if (m.squeeze?.squeezed) return 'SQUEEZE';
   if (adx >= 22 && m.dc20Pos === 'BREAK_UP'   && m.currClose > m.emaFast) return 'TRENDING_UP';
   if (adx >= 22 && m.dc20Pos === 'BREAK_DOWN' && m.currClose < m.emaFast) return 'TRENDING_DOWN';
-  if (['BREAK_UP','BREAK_DOWN'].includes(m.dc20Pos) && bw > CFG.SQUEEZE.BB_WIDTH_MAX * 2) return 'EXPANSION';
+  if (brk && (m.squeeze?.bwRank ?? 0) >= 100 - CFG.SQUEEZE.PCTL) return 'EXPANSION';
   if (adx < 18 && m.dc20Pos === 'INSIDE') return 'RANGING';
   return 'MIXED';
-}
-
-// Squeeze confidence 0–100 — higher = tighter range + coiling volatility
-export function calcSqueezeConf(m) {
-  const bw  = m.bbBw ?? 0;
-  const dcW = m.dc20?.width ?? 0;
-  const atr = m.atr ?? 0;
-  const atrPct = m.atrPct ?? 0;
-  // Invert each: lower value = higher squeeze score
-  const bwScore  = Math.max(0, Math.min(1, (CFG.SQUEEZE.BB_WIDTH_MAX * 2 - bw) / (CFG.SQUEEZE.BB_WIDTH_MAX * 2)));
-  const dcAtr    = atr > 0 ? dcW / atr : 3;
-  const dcScore  = Math.max(0, Math.min(1, (CFG.SQUEEZE.DC_ATR_RATIO_MAX * 2 - dcAtr) / (CFG.SQUEEZE.DC_ATR_RATIO_MAX * 2)));
-  const atrScore = Math.max(0, Math.min(1, (5 - atrPct) / 5));
-  return Math.round((bwScore * 0.4 + dcScore * 0.4 + atrScore * 0.2) * 100);
 }
 
 export function fvgStatus(price, g) {
@@ -268,8 +283,10 @@ export function computeMetrics(raw4h, rawFlow, oi) {
   const emaFast = calcEma(df4h, CFG.EMA_FAST);
   const emaSlow = calcEma(df4h, CFG.EMA_SLOW);
 
-  const volAvg  = df4h.slice(-(CFG.VOL_AVG_WINDOW+1), -1).reduce((s,k)=>s+k.Volume,0) / CFG.VOL_AVG_WINDOW;
-  const volCurr = df4h[df4h.length-1].Volume;
+  // Volume spike on the last CLOSED candle — a forming candle's partial volume is never a spike
+  const lastClosed = closed[closed.length - 1] ?? df4h[df4h.length - 1];
+  const volAvg  = closed.slice(-(CFG.VOL_AVG_WINDOW + 1), -1).reduce((s, k) => s + k.Volume, 0) / CFG.VOL_AVG_WINDOW;
+  const volCurr = lastClosed.Volume;
   const volSpike = volCurr >= CFG.VOL_SPIKE_MULT * volAvg;
 
   const last  = df4h[df4h.length - 1];
@@ -304,10 +321,11 @@ export function computeMetrics(raw4h, rawFlow, oi) {
   const atrPct    = calcAtrPct(atr, last.Close);
 
   // ── Donchian Channels (regime + squeeze foundation) ──────────────
-  const dc20 = calcDonchian(df4h, CFG.DONCHIAN_PERIOD_SHORT);
-  const dc55 = calcDonchian(df4h, CFG.DONCHIAN_PERIOD_LONG);
-  const dc20Pos = donchianPos(last.Close, dc20, CFG.DONCHIAN_BREAK_BUFFER_PCT);
-  const dc55Pos = donchianPos(last.Close, dc55, CFG.DONCHIAN_BREAK_BUFFER_PCT);
+  const dc20 = calcDonchian(closed, CFG.DONCHIAN_PERIOD_SHORT);
+  const dc55 = calcDonchian(closed, CFG.DONCHIAN_PERIOD_LONG);
+  const dc20Pos = donchianPos(last.Close, dc20);
+  const dc55Pos = donchianPos(last.Close, dc55);
+  const squeeze = calcSqueeze(closed);
 
   const m = {
     rsi, atr, poc5d, avwap5d, poc14d, avwap14d, poc30d, avwap30d,
@@ -318,10 +336,10 @@ export function computeMetrics(raw4h, rawFlow, oi) {
     emaFast, emaSlow, volSpike, volCurr, volAvg,
     adx: adxData, macd: macdData, bb: bbData, bbBw: bbData.bw,
     atrPct,
-    dc20, dc55, dc20Pos, dc55Pos,
+    dc20, dc55, dc20Pos, dc55Pos, squeeze,
   };
   m.regime      = calcRegime(m);
-  m.squeezeConf = calcSqueezeConf(m);
+  m.squeezeConf = squeeze.conf;
   return m;
 }
 
