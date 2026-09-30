@@ -16,6 +16,7 @@ export const CFG = {
   STRUCT_LOOKBACK_4H   : 40,    STRUCT_K_4H : 2,   STRUCT_K_30D : 5,   // pivot = extreme vs k bars each side
   SWEEP_LOOKBACK       : 20,
   FVG_MAX_GAPS         : 5,
+  POC_BINS             : 24,
   DONCHIAN_PERIOD_SHORT: 20,    DONCHIAN_PERIOD_LONG: 55,
   DONCHIAN_BREAK_BUFFER_PCT: 0.25,   // % of mid, anti-flap buffer at band edges
   SQUEEZE: { BB_WIDTH_MAX: 5.0, DC_ATR_RATIO_MAX: 1.0 },

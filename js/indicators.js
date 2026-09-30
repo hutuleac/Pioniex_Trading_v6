@@ -86,27 +86,30 @@ export function calcEma(df, span) {
   return ema;
 }
 
-export function calcPocAvwap(df, nbins = 15) {
+export function calcPocAvwap(df, nbins = CFG.POC_BINS) {
   if (!df.length) return { poc: 0, avwap: 0 };
-  const closes = df.map(k => k.Close);
-  const lo = Math.min(...closes), hi = Math.max(...closes);
-  if (lo === hi) {
-    const v = df.reduce((s,k) => s + k.Volume, 0);
-    return { poc: lo, avwap: v > 0 ? df.reduce((s,k) => s + k.Close * k.Volume, 0) / v : lo };
-  }
-  const bsz = (hi - lo) / nbins;
-  const bins = new Float64Array(nbins); // volume per bin
+  let lo = Infinity, hi = -Infinity, sumV = 0, sumPV = 0;
   for (const k of df) {
-    let idx = Math.floor((k.Close - lo) / bsz);
-    if (idx >= nbins) idx = nbins - 1;
-    bins[idx] += k.Volume;
+    if (k.Low < lo) lo = k.Low;
+    if (k.High > hi) hi = k.High;
+    sumV  += k.Volume;
+    sumPV += (k.High + k.Low + k.Close) / 3 * k.Volume;
   }
-  let maxVol = -1, pocIdx = 0;
-  for (let i = 0; i < nbins; i++) if (bins[i] > maxVol) { maxVol = bins[i]; pocIdx = i; }
-  const poc = lo + (pocIdx + 0.5) * bsz;
-  const sumV  = df.reduce((s,k) => s + k.Volume, 0);
-  const sumPV = df.reduce((s,k) => s + k.Close * k.Volume, 0);
-  return { poc, avwap: sumV > 0 ? sumPV / sumV : poc };
+  const avwap = sumV > 0 ? sumPV / sumV : df[df.length - 1].Close;
+  if (hi === lo) return { poc: lo, avwap };
+  const bsz = (hi - lo) / nbins, bins = new Float64Array(nbins);
+  const idx = p => Math.min(nbins - 1, Math.floor((p - lo) / bsz));
+  for (const k of df) {
+    const span = k.High - k.Low;
+    if (span <= 0) { bins[idx(k.Close)] += k.Volume; continue; }
+    for (let i = idx(k.Low); i <= idx(k.High); i++) {   // spread volume evenly over the candle's range
+      const overlap = Math.min(k.High, lo + (i + 1) * bsz) - Math.max(k.Low, lo + i * bsz);
+      if (overlap > 0) bins[i] += k.Volume * overlap / span;
+    }
+  }
+  let pocIdx = 0;
+  for (let i = 1; i < nbins; i++) if (bins[i] > bins[pocIdx]) pocIdx = i;
+  return { poc: lo + (pocIdx + 0.5) * bsz, avwap };
 }
 
 export function calcCvd(raw) {

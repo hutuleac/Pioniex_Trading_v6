@@ -108,6 +108,18 @@ await test('computeMetrics structure fields are valid labels', () => {
   assert.ok(['HIGH_SWEEP', 'LOW_SWEEP', 'NONE'].includes(m.sweep));
 });
 
+// ── Task 5: POC / AVWAP ──
+const cdl = (l, h, c, v) => ({ Open: c, High: h, Low: l, Close: c, Volume: v });
+await test('AVWAP weights typical price (HLC3), not close', () => {
+  // HLC3: (0+10+5)/3 = 5 and (8+10+10)/3 = 9.333 → (5·10 + 9.333·100) / 110
+  near(I.calcPocAvwap([cdl(0, 10, 5, 10), cdl(8, 10, 10, 100)]).avwap, 8.9394, 1e-3);
+});
+await test('POC spreads volume over the high–low range', () => {
+  // A: 100 vol over [0,10] (10/unit). B: 60 vol over [0,2] (30/unit) → densest node is in [0,2]
+  const { poc } = I.calcPocAvwap([cdl(0, 10, 10, 100), cdl(0, 2, 1, 60)]);
+  assert.ok(poc >= 0 && poc <= 2, `poc=${poc}`);
+});
+
 // ── summary ──
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exitCode = fail ? 1 : 0;
