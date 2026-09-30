@@ -77,9 +77,12 @@ export function calcAtr(df, period = 14) {
 
 export function calcEma(df, span) {
   if (!df.length) return 0;
+  if (df.length < span) return df.reduce((s, k) => s + k.Close, 0) / df.length;
   const k = 2 / (span + 1);
-  let ema = df[0].Close;
-  for (let i = 1; i < df.length; i++) ema = df[i].Close * k + ema * (1 - k);
+  let ema = 0;
+  for (let i = 0; i < span; i++) ema += df[i].Close;
+  ema /= span;                                   // SMA seed — removes first-close bias
+  for (let i = span; i < df.length; i++) ema = df[i].Close * k + ema * (1 - k);
   return ema;
 }
 
@@ -213,21 +216,21 @@ export function fvgStatus(price, g) {
 }
 
 export async function getAdvancedMetrics(name, symbol) {
-  // Fetch all candles; OI in parallel
-  const [raw4h, raw5d, raw14d, raw30d, rawFlow, oi] = await Promise.all([
+  const [raw4h, rawFlow, oi] = await Promise.all([
     fetchKlines(name, symbol, '4h', CFG.KLINES_MAIN),
-    fetchKlines(name, symbol, '4h', CFG.KLINES_5D),
-    fetchKlines(name, symbol, '4h', CFG.KLINES_14D),
-    fetchKlines(name, symbol, '4h', CFG.KLINES_30D),
     fetchKlines(name, symbol, '1h', CFG.FLOW_LIMIT),
     fetchOI(name, symbol),
   ]);
+  return computeMetrics(raw4h, rawFlow, oi);
+}
 
+// Pure: Binance-format klines in, metrics out. 5d/14d/30d windows are slices of one 4H series.
+export function computeMetrics(raw4h, rawFlow, oi) {
   const df4h  = parseKlines(raw4h);
-  const df5d  = parseKlines(raw5d);
-  const df14d = parseKlines(raw14d);
-  const df30d = parseKlines(raw30d);
+  const raw5d = raw4h.slice(-CFG.KLINES_5D), raw14d = raw4h.slice(-CFG.KLINES_14D), raw30d = raw4h.slice(-CFG.KLINES_30D);
+  const df5d  = df4h.slice(-CFG.KLINES_5D),  df14d  = df4h.slice(-CFG.KLINES_14D),  df30d  = df4h.slice(-CFG.KLINES_30D);
   const dfFl  = parseKlines(rawFlow);
+  const volume5d = df5d.reduce((s, k) => s + k.Volume, 0);
 
   // ── Indicators on 4H ──────────────────────────────────────────
   const rsi     = calcRsi(df4h, CFG.RSI_PERIOD);
@@ -286,7 +289,7 @@ export async function getAdvancedMetrics(name, symbol) {
     rsi, atr, poc5d, avwap5d, poc14d, avwap14d, poc30d, avwap30d,
     sweep, flow, structure4h, structure30d,
     oiNow:oi.oiNow, oiChange:oi.oiChange,
-    cvd5d, cvd14d, cvd30d,
+    cvd5d, cvd14d, cvd30d, volume5d,
     currClose:last.Close, fvgList,
     emaFast, emaSlow, volSpike, volCurr, volAvg,
     adx: adxData, macd: macdData, bb: bbData, bbBw: bbData.bw,

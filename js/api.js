@@ -8,14 +8,15 @@ import { CFG, BINANCE_BASE, BYBIT_BASE, BB_INT } from './config.js';
 export async function tryFetch(url, timeout = 12000) {
   // NOTE: AbortSignal cannot be cloned in all browser environments (DataCloneError).
   // Use Promise.race for timeout instead — no AbortSignal involved.
+  let timer;
   const fetchPromise = fetch(url).then(res => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
   });
-  const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error(`Timeout after ${timeout}ms: ${url}`)), timeout)
-  );
-  return Promise.race([fetchPromise, timeoutPromise]);
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timeout after ${timeout}ms: ${url}`)), timeout);
+  });
+  return Promise.race([fetchPromise, timeoutPromise]).finally(() => clearTimeout(timer));
 }
 
 // ── Binance public endpoints ──────────────────────────────────────
@@ -58,8 +59,8 @@ export const Y = {
     const d = await tryFetch(`${BYBIT_BASE}/v5/market/open-interest?category=linear&symbol=${s}&intervalTime=4h&limit=${CFG.OI_LIMIT}`);
     const list = d?.result?.list;
     if (!list) throw new Error('Bybit: no OI hist');
-    // Bybit: [{openInterest,timestamp},…] — ascending order
-    return list.map(x => ({ sumOpenInterest: x.openInterest }));
+    // Bybit returns newest-first; callers compute change as last vs first, so flip to oldest-first
+    return [...list].reverse().map(x => ({ sumOpenInterest: x.openInterest }));
   },
 };
 

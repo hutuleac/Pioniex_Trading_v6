@@ -7,7 +7,7 @@ export const CFG = {
   APP_VERSION          : '6.4',
   REFRESH_INTERVAL_SEC : 1200,
   OI_PERIOD            : "4h",  OI_LIMIT              : 42,
-  KLINES_MAIN          : 210,   // 4H×210 — enough for EMA200 + 100 FVG candles
+  KLINES_MAIN          : 499,   // 4H×499 (Binance weight 2 below 500) — one fetch; 5d/14d/30d are slices
   KLINES_FVG           : 100,   // last 100 candles for FVG detection
   KLINES_5D            : 30,    KLINES_14D : 84,   KLINES_30D : 180,
   FLOW_LIMIT           : 24,

@@ -41,6 +41,47 @@ await test('dead indicator exports are gone', () => {
   assert.equal(C.SIG_TIPS, undefined, 'SIG_TIPS should be deleted');
 });
 
+// ── Task 3: data layer ──
+const btc = fx('BTCUSDT');
+await test('EMA over exactly `span` bars equals the SMA (SMA seed)', () => {
+  near(I.calcEma(Array.from({ length: 20 }, (_, i) => bar(i + 1)), 20), 10.5, 1e-9);
+});
+await test('EMA200 on 499 candles is within 0.3% of EMA200 on 1000', () => {
+  const d = I.parseKlines(btc.k4);
+  near(I.calcEma(d.slice(-499), 200) / I.calcEma(d, 200), 1, 0.003);
+});
+await test('Bybit OI history is returned oldest-first', async () => {
+  const real = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ result: { list: [
+    { openInterest: '300', timestamp: '3' }, { openInterest: '100', timestamp: '1' } ] } }) });
+  try {
+    const h = await A.Y.oiHist('BTCUSDT');
+    assert.deepEqual(h.map(x => +x.sumOpenInterest), [100, 300]);
+  } finally { globalThis.fetch = real; }
+});
+await test('getAdvancedMetrics makes 4 HTTP calls (was 7)', async () => {
+  const real = globalThis.fetch; let n = 0;
+  globalThis.fetch = async url => {
+    n++; const u = String(url);
+    const body = u.includes('interval=4h') ? btc.k4.slice(-499) : u.includes('interval=1h') ? btc.k1
+      : u.includes('openInterestHist') ? [{ sumOpenInterest: '100' }, { sumOpenInterest: '110' }]
+      : { openInterest: '110' };
+    return { ok: true, json: async () => body };
+  };
+  try { await I.getAdvancedMetrics('BTC', 'BTCUSDT'); assert.equal(n, 4); }
+  finally { globalThis.fetch = real; }
+});
+await test('computeMetrics on fixture: finite core values + volume5d', () => {
+  const m = I.computeMetrics(btc.k4.slice(-499), btc.k1, { oiNow: 1, oiChange: 2 });
+  for (const k of ['rsi', 'atr', 'emaFast', 'emaSlow', 'poc5d', 'avwap30d', 'cvd30d', 'flow', 'volume5d'])
+    assert.ok(Number.isFinite(m[k]), `${k} not finite: ${m[k]}`);
+  assert.ok(m.volume5d > 0);
+});
+await test('computeMetrics survives a 60-candle new listing', () => {
+  const m = I.computeMetrics(btc.k4.slice(-60), btc.k1, { oiNow: null, oiChange: 0 });
+  assert.ok(Number.isFinite(m.rsi) && Number.isFinite(m.atr) && Number.isFinite(m.emaSlow));
+});
+
 // ── summary ──
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exitCode = fail ? 1 : 0;
