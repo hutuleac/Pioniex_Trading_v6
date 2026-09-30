@@ -665,3 +665,5 @@ th .tiptext{display:none !important;}
 .badge-sm.yellow { background: rgba(255,215,0,.12);   color: var(--yellow); border: 1px solid rgba(255,215,0,.3); }
 .badge-sm.cyan   { background: rgba(0,212,255,.12);   color: var(--cyan);   border: 1px solid rgba(0,212,255,.3); }
 .badge-sm.purple { background: rgba(179,136,255,.12); color: var(--purple); border: 1px solid rgba(179,136,255,.3); }
+
+.card-block-reason{font-size:.62rem;color:var(--red);margin-top:6px;line-height:1.4;}

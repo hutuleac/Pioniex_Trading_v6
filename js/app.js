@@ -1,10 +1,7 @@
 'use strict';
 
-import { CFG, LEGENDS, GRID_CONFIG, getGridCapital, setGridCapital } from './config.js';
-import { calcRangeFromATR, calcRecommendedGridCount, calcGridProfitPerGrid,
-         calcDrawdownScenario, selectGridMode, calcGridStopLoss, calcGridTakeProfit,
-         assessGridViability, getTickerGridProfile, selectGridDirection,
-         estimateGridDuration, calcGridScore } from './grid.js';
+import { CFG, LEGENDS, getSettings, getGridCapital, setGridCapital } from './config.js';
+import { calcGridPlan, calcGridVerdict, getTickerGridProfile } from './grid.js';
 import { fetchPriceFunding, fetchMarketPulse } from './api.js';
 import { getAdvancedMetrics, calcScore, calcRecommendation } from './indicators.js';
 import { buildMarketPulseStrip,
@@ -31,7 +28,6 @@ let allScores    = {};
 let allRecs      = {};
 let refreshTimer = null, countdownTimer = null, nextRefresh = 0;
 let isLoading    = false;
-let lastAllMetrics = {};  // alias kept for grid capital re-render
 
 function saveSymbols() {
   localStorage.setItem('pioniex_symbols', JSON.stringify(SYMBOLS));
@@ -104,11 +100,20 @@ function triggerRefresh() {
 }
 
 // ── Per-ticker processing (shared by full refresh + incremental add) ──
+// Grid plans depend on user settings, so they are derived (and re-derived when settings change).
+function attachGrid(name, m) {
+  const s = getSettings(), profile = getTickerGridProfile(name);
+  m.gridPlans = {}; m.gridVerdicts = {};
+  for (const mode of ['spot', 'futures']) {
+    m.gridPlans[mode]    = calcGridPlan(m, profile, m.direction, { ...s, mode });
+    m.gridVerdicts[mode] = calcGridVerdict(m, m.gridPlans[mode]);
+  }
+}
+
 async function fetchSingleTicker(name, symbol) {
   const pf = await fetchPriceFunding(name, symbol);
   symProvider[name] = pf.provider;
   const m = await getAdvancedMetrics(name, symbol);
-
   const { score, direction, detail } = calcScore(
     pf.price, m.atr, m.rsi, m.flow, m.oiChange,
     m.poc5d, m.avwap5d, m.poc14d, m.avwap14d, m.avwap30d,
@@ -116,23 +121,9 @@ async function fetchSingleTicker(name, symbol) {
     m.structure4h, m.structure30d, m.sweep, m.fvgList,
     m.emaFast, m.emaSlow, m.dc20Pos, pf.funding, m.regime
   );
-  const mFull    = { ...m, price: pf.price, funding: pf.funding };
-  const rec      = calcRecommendation(score, direction, m.atrPct ?? 0, pf.funding, m.rsi);
-
-  const gridProfile = getTickerGridProfile(name);
-  mFull.gridProfile    = gridProfile;
-  mFull.gridScore      = score;
-  mFull.gridViability  = assessGridViability(mFull.atrPct ?? 0, mFull.adx?.adx ?? 0, mFull.rsi, mFull.bbBw ?? 0, mFull.structure4h, mFull.dc20Pos);
-  mFull.gridDirection  = selectGridDirection(mFull.structure4h, score);
-  mFull.gridRange      = calcRangeFromATR(pf.price, mFull.atrPct ?? 1, gridProfile.rangeMultiplier, mFull.gridDirection.type);
-  mFull.gridMode       = selectGridMode(mFull.gridRange.rangeWidthPct);
-  mFull.gridRecommendation = calcRecommendedGridCount(mFull.gridRange.rangeHigh, mFull.gridRange.rangeLow);
-  mFull.gridProfitPerGrid  = calcGridProfitPerGrid(mFull.gridRange.rangeHigh, mFull.gridRange.rangeLow, mFull.gridRecommendation.recommended, undefined, mFull.gridMode.mode === 'Geometric');
-  mFull.gridDrawdown   = calcDrawdownScenario(getGridCapital(), mFull.gridRange.rangeLow, pf.price, mFull.gridRange.rangeLow * 0.85);
-  mFull.gridSL         = calcGridStopLoss(mFull.gridRange.rangeLow, gridProfile.profile);
-  mFull.gridTP         = calcGridTakeProfit(mFull.gridRange.rangeHigh, gridProfile.profile);
-  mFull.gridDuration   = estimateGridDuration(mFull.gridRange.rangeWidthPct, mFull.atrPct ?? 1);
-
+  const rec   = calcRecommendation(score, direction, m.atrPct ?? 0, pf.funding, m.rsi);
+  const mFull = { ...m, price: pf.price, funding: pf.funding, direction };
+  attachGrid(name, mFull);
   return { mFull, score, direction, detail, rec };
 }
 
@@ -144,11 +135,10 @@ async function addAndRenderTicker(name, symbol) {
     allMetrics[name]  = mFull;
     allScores[name]   = { score, direction, detail };
     allRecs[name]     = rec;
-    lastAllMetrics    = allMetrics;
 
     // Re-render both card sections
     const gridEl = document.getElementById('grid-cards');
-    if (gridEl) gridEl.innerHTML = buildGridCards(allMetrics, symProvider);
+    if (gridEl) gridEl.innerHTML = buildGridCards(allMetrics, symProvider, getSettings().mode);
 
     const dirEl = document.getElementById('direction-cards');
     if (dirEl) dirEl.innerHTML = buildDirectionCards(allMetrics, allScores, allRecs, symProvider);
@@ -204,10 +194,9 @@ async function fetchAndDisplay() {
   }
 
   // ── Render card sections ───────────────────────────────────────
-  lastAllMetrics = allMetrics;
 
   const gridEl = document.getElementById('grid-cards');
-  if (gridEl) gridEl.innerHTML = buildGridCards(allMetrics, symProvider);
+  if (gridEl) gridEl.innerHTML = buildGridCards(allMetrics, symProvider, getSettings().mode);
 
   const dirEl = document.getElementById('direction-cards');
   if (dirEl) dirEl.innerHTML = buildDirectionCards(allMetrics, allScores, allRecs, symProvider);
@@ -264,9 +253,9 @@ function showModal() {
     const val = parseFloat(document.getElementById('grid-capital-input').value);
     if (!isNaN(val) && val >= 50) {
       setGridCapital(val);
-      // Re-render grid cards with updated capital (sheets will reflect on next open)
+      for (const [n, mm] of Object.entries(allMetrics)) if (mm) attachGrid(n, mm);
       const gEl = document.getElementById('grid-cards');
-      if (gEl) gEl.innerHTML = buildGridCards(lastAllMetrics, symProvider);
+      if (gEl) gEl.innerHTML = buildGridCards(allMetrics, symProvider, getSettings().mode);
       const msg = document.getElementById('capital-saved-msg');
       if (msg) { msg.style.display = 'inline'; setTimeout(() => { msg.style.display = 'none'; }, 2000); }
     }
@@ -353,11 +342,10 @@ document.addEventListener('click', e => {
   let html;
   if (type === 'grid') {
     html = buildGridSheet(name, m, symProvider[name] || '?');
-    const gs = calcGridScore(m);
-    const gsBadgeCls = gs.score >= 8 ? 'green' : gs.score >= 6 ? 'yellow' : 'red';
+    const v = m.gridVerdicts[getSettings().mode];
     document.getElementById('sheet-title-text').textContent = `${name} — Grid Bot`;
-    document.getElementById('sheet-title-badge').innerHTML  =
-      `<span class="badge-sm ${gsBadgeCls}">${gs.score.toFixed(1)} · ${gs.label}</span>`;
+    document.getElementById('sheet-title-badge').innerHTML =
+      `<span class="badge-sm ${v.verdict === 'GRID_NOW' ? 'green' : v.verdict === 'DEVELOPING' ? 'yellow' : 'red'}">${v.score.toFixed(1)} · ${v.verdict.replace('_', ' ')}</span>`;
   } else {
     const score     = allScores[name]?.score ?? 0;
     const direction = allScores[name]?.direction ?? null;

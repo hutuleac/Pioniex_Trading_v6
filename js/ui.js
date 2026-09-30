@@ -1,12 +1,19 @@
 'use strict';
 
-import { CFG, GRID_CONFIG, getGridCapital } from './config.js';
-import { calcGridScore } from './grid.js';
+import { CFG, GRID_CONFIG } from './config.js';
+import { sortGridEntries } from './grid.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  FORMATTERS
 // ══════════════════════════════════════════════════════════════════
 export function fmt(n, d=2)   { return n==null ? '—' : Number(n).toLocaleString('en',{minimumFractionDigits:d,maximumFractionDigits:d}); }
+
+// Copy-safe price: no thousands separator, ~4–6 significant digits (sub-cent coins keep precision).
+export function fmtPrice(p) {
+  if (p == null || !Number.isFinite(p)) return '—';
+  const d = p >= 1000 ? 1 : p >= 100 ? 2 : p >= 1 ? 4 : Math.min(8, 3 - Math.floor(Math.log10(p)));
+  return p.toFixed(d);
+}
 
 // ══════════════════════════════════════════════════════════════════
 //  REGIME & MOMENTUM block — shared by both sheets
@@ -115,223 +122,75 @@ export function buildMarketPulseStrip(pulse) {
 //  CIM v6 — CARD BUILDERS
 // ══════════════════════════════════════════════════════════════════
 
-// ── Grid Bot card (collapsed) ─────────────────────────────
-export function buildGridCard(name, m, prov = '?') {
-  if (!m) return '';
+const VERDICT_UI = { GRID_NOW: ['GRID NOW', 'green'], DEVELOPING: ['DEVELOPING', 'yellow'], WAIT: ['WAIT', 'red'], BLOCKED: ['BLOCKED', 'red'] };
 
-  const range = m.gridRange;
-  const adx   = m.adx?.adx ?? 0;
-
-  // Grid score
-  const gs      = calcGridScore(m);
-  const srCls   = gs.score >= 8 ? 'sr-high' : gs.score >= 6 ? 'sr-mid' : 'sr-low';
-  const cardCls = gs.score >= 8 ? 'card-grid-ok' : gs.score >= 6 ? 'card-grid-warn' : 'card-grid-bad';
-  const labelCls = gs.score >= 8 ? 'green' : gs.score >= 6 ? 'yellow' : 'red';
-  const viabBadge = `<span class="badge-sm ${labelCls}">${gs.label}</span>`;
-
-  // ADX pill
-  const adxCls = adx < 20 ? 'p-bull' : adx < 25 ? 'p-warn' : 'p-bear';
-  const adxIcon = adx < 20 ? ' ✓' : adx < 25 ? ' ⚠' : ' ✗';
-  const adxPill = `<span class="ind-pill ${adxCls}">ADX ${adx.toFixed(0)}${adxIcon}</span>`;
-
-  // CVD lateral pill
-  const cvdDelta = Math.abs(m.cvd5d ?? 0);
-  const vol5d    = Math.max(m.volume5d ?? 1, 1);
-  const isLateral = (cvdDelta / vol5d) < CFG.CVD_LATERAL_RATIO;
-  const cvdPill = isLateral
-    ? `<span class="ind-pill p-bull">CVD Lateral</span>`
-    : `<span class="ind-pill p-bear">CVD Directional</span>`;
-
-  // Funding pill — negative = red, positive = green, near-zero = neutral
-  const fund = m.funding ?? 0;       // already in % (app.js: pf.funding = rawRate * 100)
-  const fundCls = fund < -0.001 ? 'p-bear' : fund > 0.001 ? 'p-bull' : 'p-neutral';
-  const fundPill = `<span class="ind-pill ${fundCls}">Fund ${fund.toFixed(3)}%</span>`;
-
-  // Range pill
-  let rangePill = '';
-  if (range?.rangeLow != null && range?.rangeHigh != null) {
-    const lo = range.rangeLow < 1 ? range.rangeLow.toFixed(4) : range.rangeLow.toFixed(0);
-    const hi = range.rangeHigh < 1 ? range.rangeHigh.toFixed(4) : range.rangeHigh.toFixed(0);
-    rangePill = `<span class="ind-pill p-purple">$${lo}–$${hi}</span>`;
-  }
-
-  // BB Width pill
-  const bbLabel = m.bb?.label ?? 'normal';
-  const bbBw    = m.bbBw ?? 0;
-  const bbCls   = bbLabel === 'squeeze' ? 'p-bull' : bbLabel === 'expanded' ? 'p-bear' : 'p-warn';
-  const bbIcon  = bbLabel === 'squeeze' ? ' ✓' : bbLabel === 'expanded' ? ' ✗' : '';
-  const bbPill  = `<span class="ind-pill ${bbCls}">BB ${bbBw.toFixed(1)}%${bbIcon}</span>`;
-
-  // TradingView link
-  const tvEx   = prov === 'Bybit' ? 'BYBIT' : 'BINANCE';
-  const tvLink = `<a href="https://www.tradingview.com/chart/?symbol=${tvEx}%3A${name}USDT.P" target="_blank" rel="noopener" class="tv-link" onclick="event.stopPropagation()">${name}</a>`;
-
+export function buildGridCard(name, m, prov = '?', mode = 'spot') {
+  const v = m?.gridVerdicts?.[mode], p = m?.gridPlans?.[mode];
+  if (!v || !p) return '';
+  const [vLabel, vCls] = VERDICT_UI[v.verdict];
+  const tier = v.verdict === 'GRID_NOW' ? ['sr-high', 'card-grid-ok'] : v.verdict === 'DEVELOPING' ? ['sr-mid', 'card-grid-warn'] : ['sr-low', 'card-grid-bad'];
+  const tvEx = prov === 'Bybit' ? 'BYBIT' : 'BINANCE';
   return `
-<div class="asset-card ${cardCls}" data-name="${name}" data-type="grid">
+<div class="asset-card ${tier[1]}" data-name="${name}" data-type="grid">
   <div class="card-header">
     <div>
-      <div class="card-ticker">${tvLink}</div>
-      <div class="card-price">$${fmt(m.price,2)}</div>
+      <div class="card-ticker"><a href="https://www.tradingview.com/chart/?symbol=${tvEx}%3A${name}USDT.P" target="_blank" rel="noopener" class="tv-link" onclick="event.stopPropagation()">${name}</a></div>
+      <div class="card-price">$${fmtPrice(m.price)}</div>
     </div>
     <div class="card-meta">
-      ${viabBadge}
-      <span class="score-ring ${srCls}">${gs.score.toFixed(1)}</span>
+      <span class="badge-sm ${vCls}">${vLabel}</span>
+      <span class="score-ring ${tier[0]}">${v.score.toFixed(1)}</span>
     </div>
   </div>
   <div class="indicator-row">
-    ${adxPill}${bbPill}${cvdPill}${fundPill}${rangePill}
+    <span class="ind-pill p-purple">$${fmtPrice(p.lower)}–$${fmtPrice(p.upper)}</span>
+    <span class="ind-pill p-neutral">${p.count} grids · ${(p.profit.min * 100).toFixed(2)}–${(p.profit.max * 100).toFixed(2)}%</span>
+    <span class="ind-pill p-neutral">~${p.daysInRange.toFixed(1)}d in range</span>
   </div>
+  ${v.verdict === 'BLOCKED' ? `<div class="card-block-reason">${v.reason}</div>` : ''}
 </div>`;
 }
 
-// ── Grid Bot cards wrapper ────────────────────────────────
-export function buildGridCards(allMetrics, symProvider = {}) {
-  return Object.entries(allMetrics)
-    .filter(([, m]) => m != null)
-    .map(([name, m]) => buildGridCard(name, m, symProvider[name] || '?'))
-    .join('') || '<div class="asset-card"><span style="color:#555;font-size:.7rem">No data yet.</span></div>';
+export function buildGridCards(allMetrics, symProvider = {}, mode = 'spot') {
+  const entries = Object.entries(allMetrics).filter(([, m]) => m?.gridVerdicts)
+    .map(([name, m]) => ({ name, m, verdict: m.gridVerdicts[mode] }));
+  return sortGridEntries(entries).map(e => buildGridCard(e.name, e.m, symProvider[e.name] || '?', mode)).join('')
+    || '<div class="asset-card"><span class="neutral">No data yet.</span></div>';
 }
 
-// ── Grid Bot bottom sheet ──────────────────────────────────
-export function buildGridSheet(name, m, prov = '?') {
-  if (!m) return '<p class="sheet-note">No data available.</p>';
+function planTable(p, v) {
+  const r = p.risk;
+  const risk = p.mode === 'spot'
+    ? `<tr><td>Loss at stop</td><td class="bear">−$${fmt(r.lossAtSL, 0)} (${(r.lossPct * 100).toFixed(1)}%)</td></tr>
+       <tr><td>Break-even</td><td>$${fmtPrice(r.breakEven)}</td></tr>`
+    : ['down', 'up'].filter(k => r[k]).map(k =>
+        `<tr><td>Est. liquidation ${k === 'down' ? '↓' : '↑'}</td><td class="${r[k].liqBeforeStop ? 'bear' : ''}">$${fmtPrice(r[k].liq)}${r[k].liqBeforeStop ? ' ⚠ before stop' : ''}</td></tr>`).join('');
+  return `<table class="sheet-table">
+  <tr><td>Verdict</td><td>${v.verdict.replace('_', ' ')} · ${v.score.toFixed(1)}/10</td></tr>
+  ${v.reason ? `<tr><td>Note</td><td class="warn">${v.reason}</td></tr>` : ''}
+  <tr><td>Lower</td><td>${fmtPrice(p.lower)}</td></tr>
+  <tr><td>Upper</td><td>${fmtPrice(p.upper)}</td></tr>
+  <tr><td>Grids</td><td>${p.count} · ${p.geometric ? 'Geometric' : 'Arithmetic'}</td></tr>
+  ${p.mode === 'futures' ? `<tr><td>Direction</td><td>${p.side} · ${p.leverage}×</td></tr>` : ''}
+  <tr><td>Investment</td><td>$${fmt(p.capital, 0)}</td></tr>
+  <tr><td>Stop loss</td><td class="bear">${fmtPrice(p.sl)}</td></tr>
+  <tr><td>Take profit</td><td class="bull">${fmtPrice(p.tp)}</td></tr>
+  <tr><td>Profit / grid</td><td>${(p.profit.min * 100).toFixed(2)}–${(p.profit.max * 100).toFixed(2)}% net</td></tr>
+  <tr><td>Days in range</td><td>~${p.daysInRange.toFixed(1)}</td></tr>
+  ${risk}
+</table>`;
+}
 
-  const range  = m.gridRange;
-  const adx    = m.adx?.adx ?? 0;
-  const cap    = getGridCapital();
-
-  const cvdDelta  = Math.abs(m.cvd5d ?? 0);
-  const vol5d     = Math.max(m.volume5d ?? 1, 1);
-  const isLateral = (cvdDelta / vol5d) < CFG.CVD_LATERAL_RATIO;
-  const cvdLabel  = isLateral ? 'Lateral ✓' : 'Directional ✗';
-  const cvdColor  = isLateral ? 'var(--green)' : 'var(--red)';
-
-  const dir = m.gridDirection;
-  const dirLabel = dir?.label ?? '—';
-
-  // Grid score
-  const gs = calcGridScore(m);
-  const scoreColor = gs.score >= 8 ? 'var(--green)' : gs.score >= 6 ? 'var(--yellow)' : 'var(--red)';
-
-  // Score breakdown table
-  const scoreBreakdownHtml = gs.components.map(c => {
-    const pct = c.max > 0 ? c.score / c.max : 0;
-    const color = pct >= 0.9 ? 'var(--green)' : pct >= 0.5 ? 'var(--yellow)' : 'var(--red)';
-    return `<tr><td>${c.label}</td><td style="color:${color}">${c.score.toFixed(1)} / ${c.max.toFixed(1)}<br><span style="color:var(--text2);font-size:.6rem">${c.detail}</span></td></tr>`;
-  }).join('');
-
-  // Recommendations
-  const recsHtml = gs.recs.length
-    ? gs.recs.map(r => `<div style="font-size:.65rem;margin-top:4px;padding-left:8px;border-left:2px solid var(--yellow);color:#cdd6f4">→ ${r}</div>`).join('')
-    : `<div style="color:var(--green);font-size:.65rem;margin-top:3px">All conditions met — ready to start grid</div>`;
-
-  // Warnings (critical only)
-  const warns = [];
-  if (adx > GRID_CONFIG.VIABILITY.ADX_BLOCK) warns.push(`ADX ${adx.toFixed(1)} > ${GRID_CONFIG.VIABILITY.ADX_BLOCK} — trending market, grid risky`);
-  if (m.bb?.label === 'expanded') warns.push(`BB Width ${(m.bbBw??0).toFixed(1)}% — expanded, avoid grid until compression`);
-  if (m.rsi > 70)  warns.push(`RSI ${m.rsi.toFixed(1)} — overbought, wait for pullback`);
-  if (m.rsi < 30)  warns.push(`RSI ${m.rsi.toFixed(1)} — oversold`);
-  const warnsHtml = warns.length
-    ? warns.map(w => `<div style="color:var(--yellow);font-size:.65rem;margin-top:3px">⚠ ${w}</div>`).join('')
-    : `<div style="color:var(--green);font-size:.65rem;margin-top:3px">No critical warnings</div>`;
-
-  const lo = range?.rangeLow  != null ? fmt(range.rangeLow,  range.rangeLow  < 1 ? 4 : 2) : '—';
-  const hi = range?.rangeHigh != null ? fmt(range.rangeHigh, range.rangeHigh < 1 ? 4 : 2) : '—';
-
-  // ATR
-  const atr    = m.atr ?? 0;
-  const atrPct = m.atrPct ?? 0;
-  const atrColor = atrPct < 2 ? 'var(--green)' : atrPct < 4 ? 'var(--yellow)' : 'var(--red)';
-
-  // BB Width
-  const bbLabel = m.bb?.label ?? 'normal';
-  const bbBw    = m.bbBw ?? 0;
-  const bbColor = bbLabel === 'squeeze' ? 'var(--green)' : bbLabel === 'expanded' ? 'var(--red)' : 'var(--yellow)';
-  const bbNote  = bbLabel === 'squeeze' ? '✓ Ideal' : bbLabel === 'expanded' ? '✗ Volatile' : '⚠ Watch';
-
-  // POC vs grid midpoint
-  const poc5d  = m.poc5d  ?? 0;
-  const poc14d = m.poc14d ?? 0;
-  const price  = m.price  ?? 0;
-  let pocHtml = '<tr><td colspan="2" style="color:var(--text2)">Range not computed</td></tr>';
-  if (range?.rangeLow != null && range?.rangeHigh != null && poc5d > 0) {
-    const mid    = (range.rangeLow + range.rangeHigh) / 2;
-    const inRange = (p) => p >= range.rangeLow && p <= range.rangeHigh;
-    const distPct = (p, ref) => ref > 0 ? ((p - ref) / ref * 100).toFixed(1) : '—';
-
-    const poc5InRange  = inRange(poc5d);
-    const poc14InRange = inRange(poc14d);
-    const poc5Color    = poc5InRange  ? 'var(--green)' : 'var(--yellow)';
-    const poc14Color   = poc14InRange ? 'var(--green)' : 'var(--yellow)';
-
-    const midFmt = mid < 1 ? mid.toFixed(4) : mid.toFixed(2);
-    const poc5Fmt  = poc5d  < 1 ? poc5d.toFixed(4)  : poc5d.toFixed(2);
-    const poc14Fmt = poc14d < 1 ? poc14d.toFixed(4) : poc14d.toFixed(2);
-    const poc5DistFromMid  = distPct(poc5d,  mid);
-    const poc14DistFromMid = distPct(poc14d, mid);
-
-    pocHtml = `
-  <tr><td>Grid Midpoint</td><td style="color:var(--purple)">$${midFmt}</td></tr>
-  <tr><td>POC 5d</td><td style="color:${poc5Color}">$${poc5Fmt} ${poc5InRange ? '✓ in range' : `${poc5DistFromMid}% from mid`}</td></tr>
-  <tr><td>POC 14d</td><td style="color:${poc14Color}">$${poc14Fmt} ${poc14InRange ? '✓ in range' : `${poc14DistFromMid}% from mid`}</td></tr>`;
-  }
-
-  // Pre-compute corrected values (gridProfitPerGrid and gridDrawdown are objects)
-  const recCount   = m.gridRecommendation?.recommended ?? '—';
-  const recCapPer  = recCount !== '—' && cap ? fmt(cap / recCount, 2) : '—';
-  const profitNetPct = m.gridProfitPerGrid?.netPct != null ? (m.gridProfitPerGrid.netPct * 100).toFixed(2) : '—';
-  const drawdownPct  = m.gridDrawdown?.drawdownPct   != null ? (m.gridDrawdown.drawdownPct  * 100).toFixed(1) : '—';
-  const drawdownUSDT = cap && m.gridDrawdown?.drawdownPct != null ? fmt(cap * m.gridDrawdown.drawdownPct, 0) : '—';
-  const slFmt  = m.gridSL != null ? (m.gridSL < 1 ? m.gridSL.toFixed(4) : m.gridSL.toFixed(2)) : '—';
-  const tpFmt  = m.gridTP != null ? (m.gridTP < 1 ? m.gridTP.toFixed(4) : m.gridTP.toFixed(2)) : '—';
-  const midEntry = range?.rangeLow != null ? (range.rangeLow + range.rangeHigh) / 2 : null;
-  const entryFmt = midEntry != null ? (midEntry < 1 ? midEntry.toFixed(4) : midEntry.toFixed(2)) : '—';
-  const fundColor = (m.funding ?? 0) < -0.001 ? 'var(--red)' : (m.funding ?? 0) > 0.001 ? 'var(--green)' : 'var(--text2)';
-  const setupLabel = gs.score >= 8 ? 'Recommended Setup ✓' : gs.score >= 6 ? 'Setup (Good)' : 'Setup Parameters';
-
+export function buildGridSheet(name, m) {
+  if (!m?.gridPlans) return '<p class="sheet-note">No data available.</p>';
+  const v = m.gridVerdicts.spot;
+  const comps = v.components.map(c =>
+    `<tr><td>${c.label}</td><td>${c.score.toFixed(1)} / ${c.max.toFixed(1)}<br><span class="neutral" style="font-size:.7rem">${c.detail}</span></td></tr>`).join('');
+  const recs = v.recs.map(r => `<div class="warn" style="font-size:.75rem;margin-top:4px">→ ${r}</div>`).join('');
   return `
-<div class="sheet-section-label">Grid Score</div>
-<table class="sheet-table">
-  <tr><td>Score</td><td style="color:${scoreColor};font-size:.85rem;font-weight:700">${gs.score.toFixed(1)} / 10 — ${gs.label}</td></tr>
-</table>
-<table class="sheet-table" style="margin-top:4px">${scoreBreakdownHtml}
-</table>
-
-<div class="sheet-section-label">Recommendations</div>
-${recsHtml}
-
-<div class="sheet-section-label">Warnings</div>
-${warnsHtml}
-
-<div class="sheet-section-label" style="color:${gs.score >= 6 ? 'var(--green)' : 'var(--text2)'}">${setupLabel}</div>
-<table class="sheet-table">
-  <tr><td>Range</td><td style="color:var(--purple)">$${lo} – $${hi}</td></tr>
-  <tr><td>Entry Zone</td><td style="color:var(--cyan)">$${entryFmt} (midpoint)</td></tr>
-  <tr><td>Stop Loss</td><td style="color:var(--red)">$${slFmt}</td></tr>
-  <tr><td>Take Profit</td><td style="color:var(--green)">$${tpFmt}</td></tr>
-  <tr><td>Grid Count</td><td>${recCount}</td></tr>
-  <tr><td>Profit / Grid</td><td style="color:var(--green)">${profitNetPct}% net</td></tr>
-  <tr><td>Drawdown %</td><td style="color:var(--yellow)">${drawdownPct}%</td></tr>
-  <tr><td>Drawdown USDT</td><td style="color:var(--yellow)">-$${drawdownUSDT}</td></tr>
-  <tr><td>Capital / Grid</td><td>$${recCapPer} of $${cap}</td></tr>
-  <tr><td>Direction</td><td style="color:var(--purple)">${dirLabel}</td></tr>
-  <tr><td>Mode</td><td>${m.gridMode?.mode ?? '—'}</td></tr>
-</table>
-
-<div class="sheet-section-label">Conditions</div>
-<table class="sheet-table">
-  <tr><td>ADX 4H</td><td style="color:${adx < GRID_CONFIG.VIABILITY.ADX_IDEAL ? 'var(--green)' : adx < GRID_CONFIG.VIABILITY.ADX_BLOCK ? 'var(--yellow)' : 'var(--red)'}">${adx.toFixed(1)} ${adx < GRID_CONFIG.VIABILITY.ADX_IDEAL ? '✓ Ranging' : adx < GRID_CONFIG.VIABILITY.ADX_BLOCK ? '⚠ Mild trend' : '✗ Trending'}</td></tr>
-  <tr><td>BB Width</td><td style="color:${bbColor}">${bbBw.toFixed(1)}% — ${bbNote}</td></tr>
-  <tr><td>ATR 4H</td><td style="color:${atrColor}">${atr < 1 ? atr.toFixed(4) : atr.toFixed(2)} (${atrPct.toFixed(2)}%)</td></tr>
-  <tr><td>CVD 5d</td><td style="color:${cvdColor}">${cvdLabel}</td></tr>
-  <tr><td>RSI 4H</td><td style="color:${m.rsi > 70 || m.rsi < 30 ? 'var(--yellow)' : 'var(--green)'}">${m.rsi != null ? m.rsi.toFixed(1) : '—'}</td></tr>
-  <tr><td>Funding</td><td style="color:${fundColor}">${m.funding != null ? m.funding.toFixed(3)+'%' : '—'}</td></tr>
-</table>
-
-<div class="sheet-section-label">Range Positioning</div>
-<table class="sheet-table">${pocHtml}
-</table>
-
+<div class="sheet-section-label">Spot Grid</div>${planTable(m.gridPlans.spot, m.gridVerdicts.spot)}
+<div class="sheet-section-label">Futures Grid</div>${planTable(m.gridPlans.futures, m.gridVerdicts.futures)}
+<div class="sheet-section-label">Why this score</div><table class="sheet-table">${comps}</table>${recs}
 ${buildRegimeBlock(m, { includeSqueezeConf: true })}`;
 }
 

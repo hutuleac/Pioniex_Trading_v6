@@ -79,7 +79,6 @@ export const LEGENDS = [
 // ══════════════════════════════════════════════════════════════════
 export const GRID_CONFIG = {
   DEFAULT_CAPITAL        : 500,
-  FEE_PCT                : 0.001,  // legacy path only (removed in Task 9)
   FEES                   : { spot: 0.0005, futures: 0.0005 },  // per side. Pionex spot 0.05% (published); futures unverified
   DEFAULT_LEVERAGE       : 3,
   MMR                    : 0.005,  // maintenance margin rate used for the liquidation estimate
@@ -87,12 +86,8 @@ export const GRID_CONFIG = {
   STOP_ATR_MULT          : 2.0,    // grid SL/TP sit this many 4H ATRs beyond the range
   TARGET_NET_PCT         : 0.005,  // grid count targets ≥0.5% net on the WORST step
   MIN_NET_PCT            : 0.003,  // below this worst-step net profit the plan is blocked
-  ATR_MULTIPLIER_DEFAULT : 2.5,
+  VERDICT                : { NOW: 7.0, DEVELOPING: 5.0 },   // grid score thresholds
   GEOMETRIC_THRESHOLD_PCT: 20,     // use Geometric mode if range > 20%
-
-  // SL/TP buffers scaled to volatility profile (~7-7.5/10 risk)
-  SL_BUFFERS: { stable: 0.08, moderate: 0.11, volatile: 0.13 },
-  TP_BUFFERS: { stable: 0.04, moderate: 0.05, volatile: 0.07 },
 
   // Viability block/warn thresholds — tightened for conservative grid selection
   VIABILITY: {
@@ -110,12 +105,6 @@ export const GRID_CONFIG = {
   CVD_LATERAL: {
     FULL_SCORE_BELOW : 0.15,  // ratio ≤ 0.15 → full CVD weight
     ZERO_SCORE_ABOVE : 0.30,  // ratio ≥ 0.30 → no CVD weight (linear ramp between)
-  },
-
-  // Direction selection thresholds — require stronger conviction
-  DIRECTION: {
-    LONG_MIN_SCORE : 6.5,  // score must be >= this for Long Grid
-    SHORT_MAX_SCORE: 4.5,  // score must be < this for Short Grid
   },
 };
 

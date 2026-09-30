@@ -230,6 +230,39 @@ await test('setSettings round-trips and keeps other keys', () => {
   localStorage.removeItem('cim_settings');
 });
 
+// ── Task 9: verdict ──
+const U = await import('../js/ui.js');
+const baseM = { adx: { adx: 10 }, bbBw: 4, bb: { label: 'normal' }, rsi: 50, funding: 0, poc5d: 100, poc14d: 100,
+  cvd5d: 0, volume5d: 1000, squeeze: { squeezed: false, bwRank: 50, dcAtrRank: 50 }, atrPct: 1, structure4h: 'Neutral', dc20Pos: 'INSIDE' };
+const okPlan = { lower: 95, upper: 105, profit: { min: 0.006, max: 0.007 }, mode: 'spot', risk: {} };
+await test('trending coin is BLOCKED regardless of score', () => {
+  const v = G.calcGridVerdict({ ...baseM, adx: { adx: 30 } }, okPlan);
+  assert.equal(v.verdict, 'BLOCKED'); assert.match(v.reason, /ADX/);
+});
+await test('range too narrow to beat fees is BLOCKED with a fee reason', () => {
+  const v = G.calcGridVerdict(baseM, { ...okPlan, profit: { min: -0.0005, max: 0.001 } });
+  assert.equal(v.verdict, 'BLOCKED'); assert.match(v.reason, /Profit\/grid .* after fees/);
+});
+await test('futures liquidation before stop is BLOCKED', () => {
+  const v = G.calcGridVerdict(baseM, { ...okPlan, mode: 'futures', leverage: 10, risk: { down: { liqBeforeStop: true }, up: null } });
+  assert.equal(v.verdict, 'BLOCKED'); assert.match(v.reason, /Liquidation/);
+});
+await test('CVD component scores when flow is lateral (was always 0)', () => {
+  const v = G.calcGridVerdict(baseM, okPlan);
+  assert.equal(v.components.find(c => c.label === 'CVD Flow').score, 1.5);
+});
+await test('sort: verdict rank first, then score; blocked last', () => {
+  const e = [{ n: 'a', verdict: { verdict: 'BLOCKED', score: 9 } }, { n: 'b', verdict: { verdict: 'WAIT', score: 2 } },
+             { n: 'c', verdict: { verdict: 'GRID_NOW', score: 7.1 } }, { n: 'd', verdict: { verdict: 'GRID_NOW', score: 8 } }];
+  assert.deepEqual(G.sortGridEntries(e).map(x => x.n), ['d', 'c', 'b', 'a']);
+});
+await test('fmtPrice keeps significant digits on sub-cent coins, no commas', () => {
+  assert.equal(U.fmtPrice(0.0000123), '0.00001230');
+  assert.equal(U.fmtPrice(0.09024), '0.09024');
+  assert.equal(U.fmtPrice(81234.56), '81234.6');
+  assert.equal(U.fmtPrice(null), '—');
+});
+
 // ── summary ──
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exitCode = fail ? 1 : 0;
