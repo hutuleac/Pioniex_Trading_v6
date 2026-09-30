@@ -82,40 +82,15 @@ export function buildRegimeBlock(m, { includeSqueezeConf = false } = {}) {
 // ══════════════════════════════════════════════════════════════════
 //  MARKET PULSE STRIP
 // ══════════════════════════════════════════════════════════════════
-export function buildMarketPulseStrip(pulse) {
-  const { volume24h, fg, smartMoney, socialHype } = pulse || {};
-
-  const volStr = volume24h == null ? '—'
-    : volume24h >= 1e9 ? `$${(volume24h / 1e9).toFixed(2)}B`
-    : `$${(volume24h / 1e6).toFixed(0)}M`;
-
-  let fgCls = 'neutral', fgStr = '—';
-  if (fg) {
-    fgStr = `${fg.value} ${fg.label}`;
-    fgCls = fg.value >= 60 ? 'bull' : fg.value <= 40 ? 'bear' : 'warn';
-  }
-
-  let smCls = 'neutral', smStr = '—';
-  if (smartMoney) {
-    const lbl = smartMoney.bias === 'long' ? 'Long' : smartMoney.bias === 'short' ? 'Short' : 'Neutral';
-    smStr = `${lbl} ${smartMoney.ratio.toFixed(2)}×`;
-    smCls = smartMoney.bias === 'long' ? 'bull' : smartMoney.bias === 'short' ? 'bear' : 'neutral';
-  }
-
-  let shCls = 'neutral', shStr = '—';
-  if (socialHype) {
-    const lbl = socialHype.bias === 'buy' ? 'Buy' : socialHype.bias === 'sell' ? 'Sell' : 'Neutral';
-    shStr = `${lbl} ${socialHype.pct.toFixed(0)}%`;
-    shCls = socialHype.bias === 'buy' ? 'bull' : socialHype.bias === 'sell' ? 'bear' : 'neutral';
-  }
-
-  const pill = (label, val, cls) =>
-    `<div class="pill pulse-pill"><span class="pulse-label">${label}</span><span class="${cls}">${val}</span></div>`;
-  return [
-    pill('24h Vol', volStr, ''),
-    pill('F&amp;G',  fgStr,  fgCls),
-    pill('Smart $', smStr,  smCls),
-  ].join('');
+export function buildPulse(pulse) {
+  const { volume24h, fg, smartMoney } = pulse || {};
+  const vol = volume24h == null ? '—' : volume24h >= 1e9 ? `$${(volume24h / 1e9).toFixed(2)}B` : `$${(volume24h / 1e6).toFixed(0)}M`;
+  const fgCls = !fg ? 'neutral' : fg.value >= 60 ? 'bull' : fg.value <= 40 ? 'bear' : 'warn';
+  const smCls = !smartMoney ? 'neutral' : smartMoney.bias === 'long' ? 'bull' : smartMoney.bias === 'short' ? 'bear' : 'neutral';
+  const chip = (l, v, c = '') => `<span class="chip"><span class="chip-label">${l}</span><span class="${c}">${v}</span></span>`;
+  return chip('Fear &amp; Greed', fg ? `${fg.value} ${fg.label}` : '—', fgCls)
+       + chip('Top traders L/S', smartMoney ? smartMoney.ratio.toFixed(2) : '—', smCls)
+       + chip('24h vol', vol);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -308,3 +283,8 @@ ${blockers}
 </table>
 ${buildRegimeBlock(m, { includeSqueezeConf: false })}`;
 }
+
+// ── Transitional adapters (replaced in Tasks 12–13) ──
+export const buildGridList   = (all, mode) => buildGridCards(all, {}, mode);
+export const buildSignalList = (all, scores, recs) => buildDirectionCards(all, scores, recs, {});
+export const buildSignalSheet = (name, m, sc, rec) => buildDirectionSheet(name, m, sc?.score ?? 0, sc?.direction ?? null, sc?.detail ?? [], rec);
