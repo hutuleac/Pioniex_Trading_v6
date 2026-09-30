@@ -175,6 +175,62 @@ function toast(msg) {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  SETTINGS TAB
+// ══════════════════════════════════════════════════════════════════
+const SETTING_INPUTS = [   // [input id, settings key, display scale (fees shown in %)]
+  ['set-capital', 'capital', 1], ['set-leverage', 'leverage', 1],
+  ['set-fee-spot', 'feeSpot', 100], ['set-fee-futures', 'feeFutures', 100],
+];
+function fillSettings() {
+  const s = getSettings();
+  for (const [id, key, scale] of SETTING_INPUTS) $(id).value = +(s[key] * scale).toFixed(4);
+}
+function initSettings() {
+  fillSettings();
+  for (const [id, key, scale] of SETTING_INPUTS) {
+    $(id).addEventListener('change', e => {
+      const v = parseFloat(e.target.value);
+      if (!(v > 0)) { fillSettings(); return toast('Enter a number above 0'); }
+      setSettings({ [key]: v / scale });
+      regrid();
+      toast('Saved — grid plans updated');
+    });
+  }
+  renderChips();
+  $('btn-add-ticker').addEventListener('click', handleAdd);
+  $('ticker-add-input').addEventListener('keydown', e => { if (e.key === 'Enter') handleAdd(); });
+  $('ticker-chips').addEventListener('click', e => {
+    const b = e.target.closest('[data-remove]');
+    if (b) removeTicker(b.dataset.remove);
+  });
+}
+function renderChips() {
+  const canRemove = Object.keys(SYMBOLS).length > 1;
+  $('ticker-chips').innerHTML = Object.keys(SYMBOLS).map(n =>
+    `<span class="tchip">${n}${canRemove ? `<button data-remove="${n}" aria-label="Remove ${n}">×</button>` : ''}</span>`).join('');
+}
+function removeTicker(name) {
+  if (Object.keys(SYMBOLS).length <= 1) return;
+  delete SYMBOLS[name]; forget(name);
+  saveSymbols(); renderChips(); render();
+}
+async function handleAdd() {
+  const input = $('ticker-add-input'), btn = $('btn-add-ticker'), msg = $('ticker-add-msg');
+  const name = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!name) return;
+  if (SYMBOLS[name]) { msg.textContent = `${name} is already in the list`; return; }
+  btn.disabled = true; msg.textContent = `Checking ${name}USDT…`;
+  try {
+    store(name, await fetchSingleTicker(name, name + 'USDT'));
+    SYMBOLS[name] = name + 'USDT';
+    saveSymbols(); renderChips(); render();
+    msg.textContent = `✓ ${name} added`; input.value = '';
+  } catch {
+    msg.textContent = `✗ ${name}USDT not found on Binance or Bybit`;
+  } finally { btn.disabled = false; }
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  EVENTS + INIT
 // ══════════════════════════════════════════════════════════════════
 document.addEventListener('click', async e => {
@@ -204,4 +260,5 @@ try { startTab = localStorage.getItem('cim_tab') || 'grid'; } catch {}
 showTab(['grid', 'signals', 'settings'].includes(startTab) ? startTab : 'grid');
 setMode(getSettings().mode);
 setInterval(updateAge, 30000);
+initSettings();
 fetchAndDisplay();
