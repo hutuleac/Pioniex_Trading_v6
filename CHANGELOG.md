@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## v6.5 — 2026-09-30  (math correctness)
+
+### Fixed
+- Structure 30d was computed on the same 5 candles as 4H (always identical); now swing-pivot based on separate windows
+- Grid CVD component was always 0 (`volume5d` never set)
+- SQUEEZE regime could never fire; squeeze is now per-coin percentile
+- Bybit fallback inverted the OI 7d sign
+- EMA200 seeded from one close (up to 2.5% off); now SMA-seeded on 499 candles
+- Donchian, sweep and volume spike used the forming candle; now closed candles
+- Liquidity sweep compared against all-time extremes and its legend was inverted
+- Direction score gave setup/POC points with no bias; RSI penalty ignored direction
+
+### Changed
+- One 4H fetch per ticker instead of four (27 fewer requests per refresh)
+- Grid engine rebuilt on explicit levels: Pionex fees (settings), profit/grid min–max, spot drawdown at stop, futures liquidation estimate, expected days in range
+- One grid verdict per coin (GRID NOW / DEVELOPING / WAIT / BLOCKED); blocked coins sort last with the reason
+- Futures grid side follows bias (macro + 30d structure), not setup quality
+- Volume profile spreads volume across each candle's range; AVWAP uses HLC3
+
+### Removed
+- Entry/SL/TP/leverage/position-size for direction trades (direction is context only)
+- Unused indicators: OBV, Fibonacci, 24h change, signal interpretation, direction checklist
+
+### Added
+- `tests/math.test.mjs` — offline math self-check (`node tests/math.test.mjs`)
+
 ## v6.2 — 2026-04-18
 
 ### Added

@@ -4,7 +4,7 @@
 //  CONFIG  (mirrors Trading.py CFG class)
 // ══════════════════════════════════════════════════════════════════
 export const CFG = {
-  APP_VERSION          : '6.4',
+  APP_VERSION          : '6.5',
   REFRESH_INTERVAL_SEC : 1200,
   OI_PERIOD            : "4h",  OI_LIMIT              : 42,
   KLINES_MAIN          : 499,   // 4H×499 (Binance weight 2 below 500) — one fetch; 5d/14d/30d are slices
@@ -32,47 +32,6 @@ export const BINANCE_BASE = "https://fapi.binance.com";
 export const BYBIT_BASE   = "https://api.bybit.com";
 
 export const BB_INT = { '4h':'240', '1h':'60', '15m':'15', '5m':'5', '1d':'D' };
-
-export const LEGENDS = [
-  ["RSI (14)",
-    `Relative Strength Index on 4H. Measures price momentum. >70 = overbought (price stretched, pullback likely). <30 = oversold (potential bounce zone). Extreme levels >75 or <25 trigger a −0.5 score penalty. 4H RSI carries far more weight than 1H RSI — use for setup timing, not micro-entries.`],
-  ["ATR (14)",
-    `Average True Range on 4H. Measures volatility in price units. Drives grid range width and grid SL/TP distance. ATR% column shows ATR as % of price — >4–5% = high volatility, >5% blocks bot activation. 4H ATR is typically 3–5× larger than 1H ATR for the same asset.`],
-  ["Flow% 24h",
-    `Buy/sell order flow over last 24 one-hour candles. Formula: (BuyVol − SellVol) / TotalVol × 100. >+${CFG.FLOW_STRONG}% = strong buy dominant. <−${CFG.FLOW_STRONG}% = strong sell dominant. >${CFG.FLOW_PARTIAL}% / <−${CFG.FLOW_PARTIAL}% = partial signal. Combines with OI and CVD for Pressure signal.`],
-  ["POC 5d/14d/30d",
-    `Point of Control — price level with the highest traded volume over each window. Price above POC = it acts as support. Price below = resistance. POC Confluence [YES] = POC5d ≈ POC14d within ${CFG.POC_CONFLUENCE_PCT}% = strong multi-timeframe S/R zone → adds +0.5 to score.`],
-  ["AVWAP 5d/14d/30d",
-    `Anchored VWAP — volume-weighted average price anchored at the start of each window. Tracks where the average participant entered. Price above all 3 AVWAPs = macro bullish. Below all 3 = macro bearish. AVWAP14d and AVWAP30d form the backbone of Trend Macro. AVWAP5d drives Trend Swing.`],
-  ["CVD 5d/14d/30d",
-    `Cumulative Volume Delta — net buyer volume minus seller volume over each window. [ACC] = buyers dominating (positive CVD). [DIS] = sellers dominating (negative CVD). FULL ACCUM = ACC on all 3 horizons = highest-confidence bull signal (+1.0). FULL DISTRIB = all negative = robust bear. Divergence (e.g. price rising but CVD DIS) warns of weak moves.`],
-  ["EMA 50/200",
-    `Exponential Moving Averages on 4H. EMA50 > EMA200 = golden cross (uptrend). EMA50 < EMA200 = death cross (downtrend). BULL/PULLBACK = golden cross but price dipped below EMA50 — potential re-entry zone. BEAR/BOUNCE = death cross but price above EMA50 — likely a temporary recovery. EMA alignment adds +0.5 or −0.5 to score.`],
-  ["ADX (14)",
-    `Average Directional Index on 4H. Measures trend strength, not direction. <18 = ranging market (grid-friendly). 18–22 = developing trend. >22 = confirmed trend (directional trades preferred, avoid grids). +DI > −DI = bulls in control. −DI > +DI = bears in control. Key input for Regime and grid viability checks.`],
-  ["Vol Spike",
-    `Volume spike vs ${CFG.VOL_AVG_WINDOW}-candle average on 4H. ≥${CFG.VOL_SPIKE_MULT}× average = spike. BULL SPIKE = spike + price above AVWAP5d = breakout confirmation. BEAR SPIKE = spike + price below AVWAP5d = breakdown. ELEVATED = 1.5–2× average, direction unclear. Flat volume on a strong price move = weak conviction.`],
-  ["Structure 4H/30d",
-    `Market structure: Bullish = Higher Highs + Higher Lows. Bearish = Lower Highs + Lower Lows. Neutral = transitioning or choppy. 30d structure = macro trend context. 4H structure = near-term momentum. Conflict between 4H and 30d = elevated risk and triggers −0.5 score penalty. Check both before entering.`],
-  ["OI / OI% 7d",
-    `Open Interest = total outstanding futures contracts. OI↑ + Price↑ = new longs entering = genuine bull. OI↑ + Price↓ = new shorts piling in = squeeze risk if reversed. OI↓ + Price↑ = short covering rally (less reliable). OI↓ + Price↓ = real bear (long liquidations). OI% 7d is the 7-day % change — used in Pressure scoring and squeeze risk penalties.`],
-  ["FVG (Fair Value Gap)",
-    `Institutional price imbalance on 4H. Created when 3 consecutive candles leave an unfilled gap (candle 1 high < candle 3 low = Bull FVG; candle 1 low > candle 3 high = Bear FVG). ★ = 4H structure confirms the gap direction (higher reliability). FILLING = price is inside the gap. BULL FVG = support zone when revisited. BEAR FVG = resistance. Up to 5 intact gaps tracked, sorted by proximity.`],
-  ["Liquidity Sweep",
-    `Last closed 4H candle pierces the highest high or lowest low of the prior 20 candles, then closes back inside. LOW_SWEEP = low swept then closed above = trapped shorts flushed, potential LONG. HIGH_SWEEP = high swept then closed below = trapped longs flushed, potential SHORT. A close beyond the level is a breakout, not a sweep. Strongest when combined with a nearby FVG. Triggers the Setup signal (+2.0).`],
-  ["Donchian 20/55",
-    `Donchian Channel: highest high and lowest low over N 4H candles. DC20 (20-period) = short-term range. DC55 (55-period) = macro range. INSIDE = price within range = ranging conditions. BREAK_UP / BREAK_DOWN = live price outside the channel of prior closed candles. DC20 INSIDE adds −0.25 score penalty (range indecision for directional trades). Used with ADX to classify Regime.`],
-  ["Regime",
-    `Composite market state derived from ADX + Bollinger Bands + Donchian. SQUEEZE = BB narrow + DC20 range tight → coiling, breakout imminent. TRENDING_UP = ADX >22 + DC20 break up + price above EMA50. TRENDING_DOWN = ADX >22 + DC20 break down + price below EMA50. EXPANSION = DC break + BB wide → breakout already underway. RANGING = ADX <18 + price inside DC20 → ideal for grids. MIXED = no clear classification.`],
-  ["Squeeze Conf",
-    `0–100 composite squeeze intensity. Combines: BB bandwidth (40% weight), DC20 width / ATR (40%), ATR% (20%). Higher = tighter range + compressed volatility = elevated breakout probability. Use alongside Regime SQUEEZE to time grid entries before the move, or wait for direction confirmation before going directional.`],
-  ["Bollinger Bands (20)",
-    `Price envelope: 20-period SMA ± 2 standard deviations. Bandwidth (BW%) measures volatility. BW <5% = squeeze (compressed). BW >15% = expanded (volatile). Narrowing bands followed by a DC break = high-probability breakout. Used in Regime classification and Squeeze Conf score.`],
-  ["MACD (12/26/9)",
-    `Moving Average Convergence Divergence. MACD line = EMA12 − EMA26. Signal = EMA9 of MACD line. Histogram = MACD − Signal. Positive histogram = bullish momentum building. Negative = bearish. Histogram crossing zero = momentum shift. Visible in the deep card diagnostics panel.`],
-  [`Score 0–10`,
-    `Composite setup quality score. Max components: Trend Macro (+2.0) + Pressure (+2.0) + Setup (+2.0) + Trend Swing (+1.5) + CVD Quality (+1.5) + EMA (±0.25) + FVG (+0.5) + POC Conf (+0.5) + Funding (±0.3 to ±0.5) = ~10.75 → clamped to 10. Penalties: RSI extreme (−0.5), OI squeeze on short (−0.5 to −1.0), Structure conflict (−0.5), DC20 range indecision (−0.25, only when Regime=RANGING), Funding crowded (−0.5). Score ≥ ${CFG.SCORE_ACTIVE} = strong bias. 8–10 = strong. 6–7.9 = developing. <6 = avoid.`],
-];
 
 // ══════════════════════════════════════════════════════════════════
 //  GRID BOT CONFIG
@@ -107,6 +66,55 @@ export const GRID_CONFIG = {
     ZERO_SCORE_ABOVE : 0.30,  // ratio ≥ 0.30 → no CVD weight (linear ramp between)
   },
 };
+
+export const LEGENDS = [
+  ["Grid verdict",
+    `One answer per coin for the selected grid type. GRID NOW = score ≥ ${GRID_CONFIG.VERDICT.NOW}. DEVELOPING = ≥ ${GRID_CONFIG.VERDICT.DEVELOPING}. WAIT = below. BLOCKED = a hard rule failed: trending market (ADX), Donchian breakout, RSI overbought, profit/grid below the minimum after fees, or futures liquidation before the stop. Blocked coins always sort last and show the reason.`],
+  ["Profit / grid",
+    `Net profit of one completed buy→sell step after paying the fee on both sides. Shown as min–max: arithmetic grids earn most at the bottom and least at the top; geometric grids earn the same on every step. Grid count is the largest count whose worst step still nets ≥ 0.5%.`],
+  ["Expected days in range",
+    `Random-walk estimate of how long price stays inside the range: (P−Lower)·(Upper−P) / σ², with σ the daily volatility (4H ATR% × √6). A typical value, not a guarantee — trends leave sooner.`],
+  ["Spot drawdown",
+    `Walks the real grid: slots above price start as coin bought at the current price, slots below buy at their level on the way down. Loss at stop = investment − coins × stop price. Break-even ignores grid profit already earned.`],
+  ["Liquidation (futures)",
+    `Isolated-margin estimate after every level fills on the way to the stop, using ${GRID_CONFIG.MMR * 100}% maintenance margin. If liquidation would come before the stop the coin is BLOCKED — lower the leverage. Always confirm Pionex's own estimate before creating.`],
+  ["RSI (14)",
+    `4H momentum. >70 overbought, <30 oversold. Direction score penalty −0.5 only when RSI fights the bias: >${CFG.RSI_EXTREME_OB} on a LONG, <${CFG.RSI_EXTREME_OS} on a SHORT.`],
+  ["ATR (14)",
+    `4H volatility in price units. Daily σ ≈ ATR% × √6 sets the grid range width and expected days in range. Grid SL/TP sit 2 ATR beyond the range.`],
+  ["Flow% 24h",
+    `(Taker buy − taker sell) / total volume over the last 24 one-hour candles. >+${CFG.FLOW_STRONG}% strong buying, <−${CFG.FLOW_STRONG}% strong selling.`],
+  ["POC 5d/14d/30d",
+    `Price with the most traded volume. Each candle's volume is spread across its high–low range (${CFG.POC_BINS} bins). POC confluence (5d ≈ 14d within ${CFG.POC_CONFLUENCE_PCT}%) adds +0.5 when a bias exists.`],
+  ["AVWAP 5d/14d/30d",
+    `Volume-weighted typical price (H+L+C)/3 anchored at the start of each window. Price above = buyers in profit on average.`],
+  ["CVD 5d/14d/30d",
+    `Cumulative taker buy − sell volume per window. ACC = positive, DIS = negative. On the Bybit fallback, buy volume is estimated from where the candle closed in its range.`],
+  ["EMA 50/200",
+    `SMA-seeded exponential averages on ~500 4H candles. Price > EMA50 > EMA200 = uptrend; the reverse = downtrend.`],
+  ["ADX (14)",
+    `Trend strength, not direction. <18 ranging (grid-friendly), >22 trending (grids blocked).`],
+  ["Structure 4H / 30d",
+    `Swing pivots: a pivot high beats the ${CFG.STRUCT_K_4H} candles on each side (4H, last ${CFG.STRUCT_LOOKBACK_4H} closed candles) or ${CFG.STRUCT_K_30D} each side (30d, ${CFG.KLINES_30D} candles). Bullish = higher high + higher low. Bearish = lower high + lower low. 4H vs 30d conflict −0.5.`],
+  ["OI 7d",
+    `Open-interest % change over 42 four-hour periods. OI↑ with price↑ = new longs; OI↑ with price↓ = new shorts (squeeze fuel).`],
+  ["FVG",
+    `Fair value gap: a 3-candle imbalance still unfilled in the last ${CFG.KLINES_FVG} 4H candles. ★ = 4H structure agrees with the gap.`],
+  ["Liquidity sweep",
+    `The last closed 4H candle pokes beyond the prior ${CFG.SWEEP_LOOKBACK}-candle extreme and closes back inside. HIGH_SWEEP = trapped buyers above the high (bearish). LOW_SWEEP = trapped sellers below the low (bullish).`],
+  ["Donchian 20/55",
+    `Highest high / lowest low of the prior closed 4H candles. BREAK_UP / BREAK_DOWN = live price outside the channel — blocks grids.`],
+  ["Squeeze",
+    `Relative to the coin's own history: Bollinger width AND DC20 width/ATR both in this coin's lowest ${CFG.SQUEEZE.PCTL}th percentile of the last ${CFG.SQUEEZE.HISTORY} candles. Squeeze Conf 0–100 = 100 − their average percentile.`],
+  ["Regime",
+    `SQUEEZE · TRENDING ↑/↓ (ADX ≥ 22 + Donchian break + EMA50 side) · EXPANSION (break + wide bands) · RANGING (ADX < 18 inside DC20) · MIXED.`],
+  ["Bollinger Bands (20)",
+    `20-period SMA ± 2σ. Bandwidth % = (upper − lower) / mid.`],
+  ["MACD (12/26/9)",
+    `EMA12 − EMA26, signal EMA9, histogram = MACD − signal. Positive = bullish momentum.`],
+  ["Direction score 0–10",
+    `Context for grid side selection, not trade entries. Trend Macro +2 · Pressure +2 · Setup +2 · Trend Swing +1.5 · CVD quality +1.5 · FVG +0.5 · POC confluence +0.5 · EMA ±0.25 · Funding +0.3/−0.5. No bias = no setup points. ≥ ${CFG.SCORE_ACTIVE} = strong bias.`],
+];
 
 // ── User settings (localStorage, private-mode safe) ───────────────
 const SETTINGS_KEY = 'cim_settings';

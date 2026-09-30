@@ -263,6 +263,15 @@ await test('fmtPrice keeps significant digits on sub-cent coins, no commas', () 
   assert.equal(U.fmtPrice(null), '—');
 });
 
+// ── Task 10: docs ──
+await test('glossary matches v7 math', () => {
+  const text = C.LEGENDS.map(([n, d]) => n + ' ' + d).join('\n');
+  for (const s of ['HIGH_SWEEP', 'Grid verdict', 'Expected days in range', 'Liquidation', 'percentile'])
+    assert.ok(text.includes(s), `LEGENDS missing "${s}"`);
+  for (const s of ['BUY_SWP', 'OBV', 'Fibonacci', 'bot parameters']) assert.ok(!text.includes(s), `stale "${s}"`);
+  assert.equal(C.CFG.APP_VERSION, '6.5');
+});
+
 // ── summary ──
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exitCode = fail ? 1 : 0;

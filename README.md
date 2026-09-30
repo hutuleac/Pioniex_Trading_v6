@@ -1,4 +1,4 @@
-# CIM — Crypto Intelligence Matrix `v6.4`
+# CIM — Crypto Intelligence Matrix `v6.5`
 
 **Live:** [pioniex.vercel.app](https://pioniex.vercel.app/)
 
@@ -204,6 +204,13 @@ Any modern browser with ES Module support: Chrome 61+, Firefox 60+, Safari 11+, 
 ---
 
 ## Changelog
+
+### v6.5 — 2026-09-30
+- Pivot-based structure, fixed grid CVD, per-coin squeeze, Bybit OI sign, SMA-seeded EMA
+- Pionex-accurate grid engine (fees, profit/grid range, spot drawdown, futures liquidation)
+- One verdict per coin: GRID NOW / DEVELOPING / WAIT / BLOCKED
+- Direction is context only (no trade params)
+- Offline math self-check: `node tests/math.test.mjs`
 
 ### v6.4 — 2026-05-08
 - Reference Guide and Indicator Glossary fully rewritten — all 20 indicators documented with thresholds, formulas, and how-to-read guidance
