@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## v7.0 — 2026-09-30  (grid-first mobile UX)
+
+### Added
+- Bottom tab bar: Grid · Signals · Settings (top tabs on desktop); safe-area aware for iPhone
+- Grid tab: Spot | Futures toggle, ranked list (verdict then score), blocked coins last with reason
+- Grid sheet: Pionex parameters in form order, tap-to-copy; risk box (spot loss at stop / futures liquidation); "Why this score"
+- Signals tab with the full score breakdown
+- Settings tab: investment, futures leverage, spot/futures fees, tickers, glossary
+- Instant open from cache; tickers render as they arrive; refresh when returning to the app
+
+### Changed
+- 16px base type, ≥12px everywhere, ≥44px tap targets, 16px inputs (no iOS zoom)
+- Market pulse as a scrollable chip row; one-line topbar
+
+### Removed
+- Config modal, duplicate card sections, countdown pill, unused taker-ratio pulse
+
 ## v6.5 — 2026-09-30  (math correctness)
 
 ### Fixed

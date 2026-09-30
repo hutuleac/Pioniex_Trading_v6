@@ -79,7 +79,7 @@ After every commit, always push immediately to `origin master` without asking fo
 
 ## Project Overview
 
-CIM (Crypto Intelligence Matrix) — a client-side crypto futures monitoring dashboard (v5.4). Fetches live data from Binance Futures (primary) and Bybit V5 (fallback), calculates technical indicators entirely in the browser, and scores assets 0–10 to surface trading setups. Includes Market Pulse topbar (Fear & Greed, Smart Money, 24h Volume), signal edge bars, and responsive layout. Deployed on Vercel. No backend, no build step.
+CIM (Crypto Intelligence Matrix) v7.0 — client-side grid-bot advisor for **Pionex** (spot + futures grids), iPhone-first. Fetches Binance Futures (Bybit V5 fallback), computes indicators in the browser, and gives each coin one grid verdict (GRID NOW / DEVELOPING / WAIT / BLOCKED) plus Pionex-ready parameters. Direction score is context only (no trade entries). Deployed on Vercel. No backend, no build step.
 
 **Stack:** Vanilla HTML + CSS + ES Modules (`<script type="module">`) · Google Fonts (Chakra Petch, IBM Plex Mono) · Vercel Analytics
 
@@ -92,19 +92,21 @@ npx serve .
 # or just open index.html in browser (ES Modules require HTTP — not file://)
 ```
 
-Deployed to Vercel — pushes to `master` deploy automatically. No CI, no tests, no linter configured.
+Deployed to Vercel — pushes to `master` deploy automatically. No CI, no linter configured.
+
+Tests: `node tests/math.test.mjs` (offline; fixtures in `tests/fixtures/`, refresh with `node tests/fetch-fixtures.mjs`).
 
 ## Architecture
 
 | File | Responsibility |
 |------|---------------|
-| `index.html` | All layout, table structures, modal shell, section scaffolding |
-| `js/config.js` | All constants: `CFG`, `GRID_CONFIG`, `BINANCE_BASE`, `BYBIT_BASE`, `BB_INT`, `LEGENDS`, `getGridCapital()`, `setGridCapital()` |
+| `index.html` | Shell: topbar, pulse row, tab bar, three tab panels, bottom sheet, toast |
+| `js/config.js` | All constants: `CFG`, `GRID_CONFIG`, `BINANCE_BASE`, `BYBIT_BASE`, `BB_INT`, `LEGENDS`, `getSettings()/setSettings()` |
 | `js/api.js` | HTTP layer: `B` (Binance endpoints), `Y` (Bybit endpoints), `tryFetch()`, `fetchPriceFunding()`, `fetchKlines()`, `fetchOI()` |
-| `js/indicators.js` | All calculations: RSI, ATR, EMA, POC/AVWAP, CVD, Market Structure, FVG, ADX, MACD, BB, OBV, Fib, `getAdvancedMetrics()`, `calcScore()`, `calcBotParams()`, `calcRecommendation()`, `calcDirectionConditions()`, `interpretSignals()` |
-| `js/ui.js` | All HTML builders: `buildTableRow`, `buildFastRow`, `buildDeepCard`, `buildSigCard`, `buildBotCard`, `renderGridPanel`, `renderCryptoRiskNotice` |
-| `js/grid.js` | Grid bot math: range from ATR, profit/grid, drawdown, viability, grid count, SL/TP, `getTickerGridProfile()` |
-| `js/app.js` | Orchestrator: `SYMBOLS` state, `fetchAndDisplay()` loop, modal wiring, timer/countdown, event listeners |
+| `js/indicators.js` | Pure `computeMetrics(raw4h, rawFlow, oi)` (all indicators, one 499-candle 4H series sliced to 5d/14d/30d; closed candles for Donchian/sweep/structure/vol spike); `calcScore`, `calcRecommendation` |
+| `js/ui.js` | `buildGridList/Sheet`, `buildSignalList/Sheet`, `buildPulse`, `buildRegimeBlock`, `fmtPrice` |
+| `js/grid.js` | Grid engine: `calcGridPlan` (explicit levels → profit/grid min–max, spot drawdown, futures liquidation, days in range), `calcGridScore`, `calcGridVerdict`, `sortGridEntries` |
+| `js/app.js` | State, sequential progressive fetch, cache (`cim_cache_v7`), tabs, sheet, settings, tickers |
 
 **Module dependency graph (no circular deps):**
 ```
@@ -112,39 +114,42 @@ index.html
   └── css/style.css
   └── js/app.js
         ├── js/config.js
-        ├── js/grid.js         (pure functions — no imports)
+        ├── js/grid.js         → config.js
         ├── js/api.js          → config.js
         ├── js/indicators.js   → config.js, api.js
-        └── js/ui.js           → config.js, indicators.js
+        └── js/ui.js           → config.js, grid.js
 ```
 
 **Data flow:**
 ```
-app.js::fetchAndDisplay()
-  → api.js::fetchPriceFunding()          (price + funding rate)
-  → indicators.js::getAdvancedMetrics()  (klines → RSI/ATR/EMA/POC/CVD/FVG/Structure)
-  → indicators.js::interpretSignals()    (signal objects)
-  → indicators.js::calcScore()           (0–10 score + detail array)
-  → indicators.js::calcBotParams()       (entry/SL/TP)
-  → grid.js::assess/calc functions       (grid bot advisory)
-  → ui.js::buildDeepCard(…, detail)      (score breakdown injected here)
-  → ui.js::build* functions              (HTML strings)
-  → innerHTML into DOM tables/grids
+app.js::fetchSingleTicker()
+  → api.js::fetchPriceFunding()
+  → indicators.js::getAdvancedMetrics() → computeMetrics()
+  → indicators.js::calcScore() / calcRecommendation()      (direction context)
+  → app.js::attachGrid() → grid.js::calcGridPlan() + calcGridVerdict()  (spot + futures)
+  → ui.js builders → innerHTML (#grid-list, #signal-list, #bottom-sheet)
 ```
 
 ## Key Constants (js/config.js)
 
 | Constant | Value | Notes |
 |----------|-------|-------|
-| `CFG.APP_VERSION` | `'5.4'` | Update on releases |
+| `CFG.APP_VERSION` | `'7.0'` | Update on releases |
 | `CFG.REFRESH_INTERVAL_SEC` | `1200` | 20 min auto-refresh |
-| `CFG.SCORE_BOT_MIN` | `7.5` | Score threshold for bot params activation |
+| `CFG.SCORE_ACTIVE` | `7.5` | Direction score ≥ this = strong bias |
 | `CFG.RSI_OB/OS` | `70 / 30` | Standard overbought/oversold |
-| `CFG.RSI_EXTREME_OB/OS` | `75 / 25` | Extreme levels — apply score penalty |
-| `CFG.SL_ATR_MULT` | `1.5` | Stop-loss = 1.5× ATR |
-| `CFG.TP1_ATR_MULT` | `3.0` | TP1 = 3× SL distance |
-| `CFG.TP2_ATR_MULT` | `5.25` | TP2 = 5.25× SL distance |
+| `CFG.RSI_EXTREME_OB/OS` | `75 / 25` | Extreme levels — apply score penalty vs bias |
+| `CFG.KLINES_MAIN` | `499` | One 4H fetch; 5d/14d/30d are slices |
+| `CFG.SQUEEZE` | `{PCTL:20, HISTORY:300}` | Per-coin percentile squeeze |
 | `GRID_CONFIG.DEFAULT_CAPITAL` | `500` | Grid capital default (USDT) |
+| `GRID_CONFIG.FEES` | `{spot:.0005, futures:.0005}` | Per side; futures unverified |
+| `GRID_CONFIG.DEFAULT_LEVERAGE` | `3` | Futures leverage default |
+| `GRID_CONFIG.MMR` | `.005` | Maintenance margin for liquidation estimate |
+| `GRID_CONFIG.GRID_LIMITS` | `{spot:[2,150], futures:[2,500]}` | Spot limit unverified |
+| `GRID_CONFIG.STOP_ATR_MULT` | `2` | Grid SL/TP = range ± 2 ATR |
+| `GRID_CONFIG.TARGET_NET_PCT` | `.005` | Worst-step net target for grid count |
+| `GRID_CONFIG.MIN_NET_PCT` | `.003` | Below this the plan is BLOCKED |
+| `GRID_CONFIG.VERDICT` | `{NOW:7, DEVELOPING:5}` | Grid score thresholds |
 
 ## Score System
 
@@ -156,46 +161,46 @@ app.js::fetchAndDisplay()
 | Pressure (Flow, OI, CVD5d) | +2.0 |
 | Setup (Sweep, POC confluence) | +2.0 |
 | Trend Swing (AVWAP5d, Flow) | +1.5 |
-| CVD Quality (5d/14d/30d alignment) | +1.0 |
-| EMA (50/200 position) | +0.5 |
+| CVD Quality (5d/14d/30d alignment) | +1.5 |
+| EMA (50/200 position) | ±0.25 |
 | FVG (nearest fair value gap) | +0.5 |
 | POC Confluence | +0.5 |
 
 **Penalties:** RSI extreme (±0.5), OI squeeze (−0.5/−1.0), structure conflict (−0.5)
 
-**Thresholds:** ≥7.5 = bot active · 6–7.4 = developing · <6 = avoid
+**Thresholds:** Direction ≥7.5 = strong bias · Grid verdict thresholds in `GRID_CONFIG.VERDICT`
+
+**Grid score (0–10):**
+
+| Component | Max |
+|-----------|-----|
+| ADX | 3.0 |
+| BB width | 1.0 |
+| Squeeze | 1.5 |
+| CVD flow | 1.5 |
+| POC in range | 2.0 |
+| RSI | 1.0 |
+| Funding | 0.5 |
 
 ## Common Change Patterns
 
 | Task | Touch |
 |------|-------|
-| Change default tickers | `js/app.js` → `DEFAULT_SYMBOLS` |
-| Add/remove a ticker permanently | `js/app.js` → `DEFAULT_SYMBOLS` (runtime: Config modal) |
+| Change default tickers | `js/app.js` → `DEFAULT_SYMBOLS` (runtime: Settings tab) |
 | Change refresh interval | `js/config.js` → `CFG.REFRESH_INTERVAL_SEC` |
-| Change score bot threshold | `js/config.js` → `CFG.SCORE_BOT_MIN` |
-| Change SL/TP ratios | `js/config.js` → `CFG.SL_ATR_MULT`, `TP1_ATR_MULT`, `TP2_ATR_MULT` |
-| Add column to Full Metrics table | `index.html` (thead) + `js/ui.js` → `buildTableRow()` |
-| Add column to Fast Decision table | `index.html` (thead) + `js/ui.js` → `buildFastRow()` |
-| Add a new indicator calculation | `js/indicators.js` → add fn + wire into `getAdvancedMetrics()` |
-| Add a new signal | `js/indicators.js` → `interpretSignals()` + `js/ui.js` → `buildSigCard()` |
+| Change direction strong-bias threshold | `js/config.js` → `CFG.SCORE_ACTIVE` |
+| Add a new indicator calculation | `js/indicators.js` → add fn + wire into `computeMetrics()` |
 | Change score weights/penalties | `js/indicators.js` → `calcScore()` |
 | Add a score component row | `js/indicators.js` → `calcScore()` — push `[comp, val, reason]` to `detail` array |
-| Change indicator groups in deep card | `js/ui.js` → `buildDeepCard()` → `groups` array |
-| Change grid bot math | `js/grid.js` |
-| Change grid defaults | `js/config.js` → `GRID_CONFIG` |
+| Change grid math | `js/grid.js` + add a test in `tests/math.test.mjs` |
+| Change Pionex fees/limits | `js/config.js` → `GRID_CONFIG` |
+| Add a sheet field | `js/ui.js` → `buildGridSheet` |
 | Update version badge | `js/config.js` → `CFG.APP_VERSION` |
 | Add legend entry | `js/config.js` → `LEGENDS` array |
 
-## UI Layout (current page sections, top to bottom)
+## UI Layout
 
-1. **Fast Decision table** — click any row to expand the deep card inline
-2. **Deep card** (expanded) — 4 indicator groups (Trend/Momentum/Volatility/Setup) + direction checklist + Score Components table
-3. **Grid Bot Advisor** — `#grid-risk-notice` + `#grid-panel` rendered immediately after Fast Decision
-4. **Full Metrics table** — all raw indicator values (collapsible)
-5. **Active Bot Parameters** — cards for assets scoring ≥7.5
-6. **Reference Guide** — legend (glossary collapsible)
-
-Signal Analysis section was removed in v5.4. Score data lives exclusively inside the deep card's "Score Components" section (`buildDeepCard` receives `detail` from `calcScore()`). Score Analysis table was also removed earlier.
+Topbar → pulse chips → tabs (Grid: Spot|Futures toggle + ranked rows; Signals: rows; Settings: form + glossary) → bottom sheet (Pionex copy fields, risk, why-score, regime).
 
 ## CSS Color System
 
@@ -209,15 +214,14 @@ All colors are CSS variables in `:root`. Key semantic tokens:
 | `--cyan` | `#00d4ff` | Primary accent · Trend group title |
 | `--purple` | `#b388ff` | Setup group title |
 | `--orange` | `#ff8c00` | Bybit exchange badge |
-| `--row-stripe` | `rgba(30,38,64,.35)` | Alternating row tint (all tables) |
 | `--row-border` | `rgba(30,38,64,.4)` | Row separator borders |
 | `--shadow` | `rgba(0,0,0,.65)` | Card / tooltip drop shadow |
 
-Badge background opacities are standardised: green `.15`, yellow `.12`, red `.15`. Never use hardcoded `rgba(30,38,64,...)` — use `--row-stripe` or `--row-border` instead.
+Badge background opacities are standardised: green `.15`, yellow `.12`, red `.15`. Never use hardcoded `rgba(30,38,64,...)` — use `--row-border` instead. Layout tokens: `--sans`, `--mono`, `--tab-h`, `--safe-t`, `--safe-b`.
 
 ## indicators.js Internal Pattern
 
-`_sharedBooleans(metrics)` is a private helper called by **both** `interpretSignals()` and `calcScore()`. It centralises derived boolean conditions (e.g. `bullMac`, `sqR`, `aAcc`). If you add a new score component or signal that needs a derived boolean, add it here — not inline in each function.
+`deriveConditions(...)` is a private helper called by `calcScore()`. It centralises derived boolean conditions (e.g. `bullMac`, `sqR`, `aAcc`). If you add a new score component that needs a derived boolean, add it here — not inline.
 
 ## API Layer Notes
 
@@ -232,7 +236,11 @@ Badge background opacities are standardised: green `.15`, yellow `.12`, red `.15
 | Key | Set by | Used for |
 |-----|--------|---------|
 | `pioniex_symbols` | `app.js::saveSymbols()` | User's ticker list (persists across sessions) |
-| `gridCapital` | `config.js::setGridCapital()` | Grid bot capital input |
+| `cim_settings` | `config.js::setSettings()` | capital, leverage, feeSpot, feeFutures, mode |
+| `cim_cache_v7` | `app.js::saveCache()` | Last good results for instant open |
+| `cim_tab` | `app.js::showTab()` | Last active tab |
+
+The legacy `gridCapital` key is read once as a fallback.
 
 ## Reference File
 
@@ -243,5 +251,5 @@ Badge background opacities are standardised: green `.15`, yellow `.12`, red `.15
 - **No build step / no bundler** (2026-03-22): Deliberately kept vanilla JS. React + Vite + Tailwind were evaluated and rejected — dashboard is read-mostly with no complex nested state. Adds friction for no proportional gain at this scale.
 - **No backend:** All API calls are client-side to public Binance/Bybit endpoints. No API keys needed — all public market data.
 - **Sequential ticker fetching:** `fetchAndDisplay()` loops tickers with `for...of` (not `Promise.all`) to avoid rate-limiting on Binance's public API.
-- **`window._removeTicker`:** Exposed globally to allow inline `onclick` from dynamically-generated HTML inside the modal. Intentional pattern.
-- **Header tooltips via fixed floater:** Column header tooltips use a `position:fixed` floater div (`#th-tip-floater`) to escape the `overflow-x:auto` clipping on the scrollable metrics table.
+- **Grid-first (2026-09-30):** user runs Pionex spot + futures grids; direction signals are context only — no entry/leverage/size outputs.
+- **Tests without package.json:** Node v26 imports the ES modules directly; adding package.json could change Vercel's build detection.

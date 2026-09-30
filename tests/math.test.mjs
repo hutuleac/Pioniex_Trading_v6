@@ -269,7 +269,42 @@ await test('glossary matches v7 math', () => {
   for (const s of ['HIGH_SWEEP', 'Grid verdict', 'Expected days in range', 'Liquidation', 'percentile'])
     assert.ok(text.includes(s), `LEGENDS missing "${s}"`);
   for (const s of ['BUY_SWP', 'OBV', 'Fibonacci', 'bot parameters']) assert.ok(!text.includes(s), `stale "${s}"`);
-  assert.equal(C.CFG.APP_VERSION, '6.5');
+  assert.equal(C.CFG.APP_VERSION, '7.0');
+});
+
+// ── Task 12: grid UI ──
+const gridM = (() => {
+  const m = I.computeMetrics(btc.k4.slice(-499), btc.k1, { oiNow: 1, oiChange: 0 });
+  m.price = m.currClose; m.funding = 0; m.direction = null;
+  const s = { capital: 500, leverage: 3, feeSpot: 0.0005, feeFutures: 0.0005 };
+  m.gridPlans = {}; m.gridVerdicts = {};
+  for (const mode of ['spot', 'futures']) {
+    m.gridPlans[mode] = G.calcGridPlan(m, G.getTickerGridProfile('BTC'), null, { ...s, mode });
+    m.gridVerdicts[mode] = G.calcGridVerdict(m, m.gridPlans[mode]);
+  }
+  return m;
+})();
+await test('grid rows are buttons that open the sheet, sorted, no NaN', () => {
+  const html = U.buildGridList({ BTC: gridM, ETH: { ...gridM, gridVerdicts: { spot: { ...gridM.gridVerdicts.spot, verdict: 'BLOCKED', reason: 'x' } } } }, 'spot');
+  assert.ok(html.indexOf('data-open="grid:BTC"') < html.indexOf('data-open="grid:ETH"'), 'blocked should sort last');
+  assert.ok(!/NaN|undefined/.test(html), 'NaN/undefined in rows');
+});
+await test('grid sheet has copyable Pionex fields in form order', () => {
+  const html = U.buildGridSheet('BTC', gridM, 'futures', 'Binance');
+  const labels = [...html.matchAll(/data-label="([^"]+)"/g)].map(x => x[1]);
+  assert.deepEqual(labels, ['Lower', 'Upper', 'Grids', 'Mode', 'Direction', 'Leverage', 'Investment', 'Stop loss', 'Take profit']);
+  assert.ok(!/data-copy="[^"]*,/.test(html), 'copy values must not contain thousands separators');
+  assert.ok(!/NaN|undefined/.test(html));
+});
+
+// ── Task 13: signals UI ──
+await test('signal rows open sheets; sheet renders every score detail row', () => {
+  const sc = { score: 6.2, direction: 'LONG', detail: [['Trend Macro BULL (full)', 2, '3/4'], ['RSI overbought vs LONG', -0.5, 'RSI=78']] };
+  const list = U.buildSignalList({ BTC: gridM }, { BTC: sc }, { BTC: { rec: 'Developing', blockers: [] } });
+  assert.match(list, /data-open="signal:BTC"/);
+  const sheet = U.buildSignalSheet('BTC', gridM, sc, { rec: 'Developing', blockers: ['RSI 78.0 overbought vs LONG'] });
+  assert.match(sheet, /Trend Macro BULL \(full\)/); assert.match(sheet, /\+2\.00/); assert.match(sheet, /−0\.50|-0\.50/);
+  assert.ok(!/NaN|undefined/.test(sheet));
 });
 
 // ── summary ──

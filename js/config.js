@@ -4,7 +4,7 @@
 //  CONFIG  (mirrors Trading.py CFG class)
 // ══════════════════════════════════════════════════════════════════
 export const CFG = {
-  APP_VERSION          : '6.5',
+  APP_VERSION          : '7.0',
   REFRESH_INTERVAL_SEC : 1200,
   OI_PERIOD            : "4h",  OI_LIMIT              : 42,
   KLINES_MAIN          : 499,   // 4H×499 (Binance weight 2 below 500) — one fetch; 5d/14d/30d are slices
@@ -136,5 +136,3 @@ export function setSettings(patch) {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); } catch {}
   return next;
 }
-export const getGridCapital = () => getSettings().capital;
-export const setGridCapital = v => setSettings({ capital: +v });

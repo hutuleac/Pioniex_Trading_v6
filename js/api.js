@@ -28,7 +28,6 @@ export const B = {
   oiHist        : s => tryFetch(`${BINANCE_BASE}/futures/data/openInterestHist?symbol=${s}&period=4h&limit=${CFG.OI_LIMIT}`),
   oiNow         : s => tryFetch(`${BINANCE_BASE}/fapi/v1/openInterest?symbol=${s}`),
   smartMoney    : s => tryFetch(`${BINANCE_BASE}/futures/data/topLongShortAccountRatio?symbol=${s}&period=1h&limit=1`),
-  takerSentiment: s => tryFetch(`${BINANCE_BASE}/futures/data/takerBuySellVol?symbol=${s}&period=1h&limit=1`),
   fearGreed     : () => tryFetch('https://api.alternative.me/fng/?limit=1'),
 };
 
@@ -89,11 +88,10 @@ export async function fetchMarketPulse(symbols = []) {
   const tasks = [
     B.fearGreed(),
     B.smartMoney('BTCUSDT'),
-    B.takerSentiment('BTCUSDT'),
     ...symbols.map(s => B.ticker24h(s)),
   ];
   const results = await Promise.allSettled(tasks);
-  const [fgRes, smRes, tsRes, ...volResults] = results;
+  const [fgRes, smRes, ...volResults] = results;
 
   let fg = null;
   if (fgRes.status === 'fulfilled') {
@@ -110,23 +108,13 @@ export async function fetchMarketPulse(symbols = []) {
     }
   }
 
-  let socialHype = null;
-  if (tsRes.status === 'fulfilled') {
-    const d = tsRes.value?.[0];
-    if (d) {
-      const r = parseFloat(d.buySellRatio);
-      const pct = r / (r + 1) * 100;
-      socialHype = { pct, bias: pct > 52 ? 'buy' : pct < 48 ? 'sell' : 'neutral' };
-    }
-  }
-
   let volume24h = null;
   const vols = volResults
     .filter(r => r.status === 'fulfilled')
     .map(r => parseFloat(r.value?.quoteVolume || 0));
   if (vols.length > 0) volume24h = vols.reduce((a, b) => a + b, 0);
 
-  return { volume24h, fg, smartMoney, socialHype };
+  return { volume24h, fg, smartMoney };
 }
 
 export async function fetchOI(name, symbol) {
